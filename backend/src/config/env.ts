@@ -26,6 +26,28 @@ const emailList = z
   .pipe(z.array(z.email()))
   .transform((emails) => [...new Set(emails)]);
 
+/** Comma-separated domain list → normalised, de-duplicated array. "@ncuindia.edu" also works. */
+const domainList = z
+  .string()
+  .default('')
+  .transform((raw) =>
+    raw
+      .split(',')
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0),
+  )
+  .pipe(
+    z.array(
+      z
+        .string()
+        .regex(
+          /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/,
+          'must be a bare domain such as ncuindia.edu',
+        ),
+    ),
+  )
+  .transform((domains) => [...new Set(domains)]);
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -77,6 +99,13 @@ const envSchema = z
 
     MANAGER_ALLOWED_EMAILS: emailList,
     POS_ALLOWED_EMAILS: emailList,
+
+    /**
+     * Email domains allowed to sign in at all. EMPTY (the default) allows any domain,
+     * which is the behaviour this project shipped with. Set it to restrict sign-in,
+     * e.g. ALLOWED_EMAIL_DOMAINS=ncuindia.edu
+     */
+    ALLOWED_EMAIL_DOMAINS: domainList,
 
     PAYMENT_MOCK_ENABLED: booleanFromString,
     DEV_LOGIN_ENABLED: booleanFromString,

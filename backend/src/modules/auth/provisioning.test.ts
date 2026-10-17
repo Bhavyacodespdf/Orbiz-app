@@ -111,3 +111,42 @@ describe('signInWithIdentity', () => {
     expect(await prisma.authIdentity.count()).toBe(1);
   });
 });
+
+describe('domain restriction', () => {
+  const ncu = { ...lists, ALLOWED_EMAIL_DOMAINS: ['ncuindia.edu'] };
+
+  it('allows any domain when none are configured (the shipped default)', async () => {
+    const { isNewAccount } = await signInWithIdentity(prisma, google('d-0', 'a@gmail.com'), lists);
+    expect(isNewAccount).toBe(true);
+  });
+
+  it('accepts an allowed domain, compared case-insensitively', async () => {
+    const { isNewAccount } = await signInWithIdentity(
+      prisma,
+      google('d-1', 'Student@NCUIndia.edu'),
+      ncu,
+    );
+    expect(isNewAccount).toBe(true);
+  });
+
+  it('refuses an outside domain and creates nothing', async () => {
+    await expect(
+      signInWithIdentity(prisma, google('d-2', 'outsider@gmail.com'), ncu),
+    ).rejects.toMatchObject({ code: 'EMAIL_DOMAIN_NOT_ALLOWED', status: 403 });
+    expect(await prisma.user.count()).toBe(0);
+    expect(await prisma.authIdentity.count()).toBe(0);
+  });
+
+  it('refuses an unverified email even on the allowed domain', async () => {
+    await expect(
+      signInWithIdentity(prisma, google('d-3', 'student@ncuindia.edu', false), ncu),
+    ).rejects.toMatchObject({ code: 'EMAIL_DOMAIN_NOT_ALLOWED' });
+  });
+
+  it('also blocks an existing account whose domain is no longer allowed', async () => {
+    await signInWithIdentity(prisma, google('d-4', 'old@example.com'), lists);
+    await expect(
+      signInWithIdentity(prisma, google('d-4', 'old@example.com'), ncu),
+    ).rejects.toMatchObject({ code: 'EMAIL_DOMAIN_NOT_ALLOWED' });
+  });
+});

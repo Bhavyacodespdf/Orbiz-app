@@ -24,6 +24,37 @@ export interface SignInResult {
 export type Allowlists = Pick<Env, 'MANAGER_ALLOWED_EMAILS' | 'POS_ALLOWED_EMAILS'>;
 
 /**
+ * Who may sign in, and with which roles. ALLOWED_EMAIL_DOMAINS is optional: when it is
+ * absent or empty, any domain may sign in — the behaviour before this setting existed.
+ */
+export type SignInPolicy = Allowlists & Partial<Pick<Env, 'ALLOWED_EMAIL_DOMAINS'>>;
+
+/**
+ * Refuses sign-in when the identity's email is outside the configured domains.
+ * Only a provider-verified email proves a domain, so an unverified one is refused too.
+ * This is the server-side rule; any check in the provider's console is a convenience.
+ */
+function assertDomainAllowed(identity: VerifiedIdentity, domains: string[] | undefined): void {
+  if (!domains || domains.length === 0) return;
+  const allowed = domains.join(' or ');
+  if (!identity.emailVerified) {
+    throw new AppError(
+      403,
+      'EMAIL_DOMAIN_NOT_ALLOWED',
+      `CampusCart is only open to ${allowed} accounts, and this address is not verified.`,
+    );
+  }
+  const domain = normaliseEmail(identity.email).split('@')[1] ?? '';
+  if (!domains.includes(domain)) {
+    throw new AppError(
+      403,
+      'EMAIL_DOMAIN_NOT_ALLOWED',
+      `CampusCart is only open to ${allowed} accounts.`,
+    );
+  }
+}
+
+/**
  * Roles a brand-new account receives. Everyone is a Student. Manager/POS are
  * added only when the provider has verified the email and it is allowlisted.
  * Admin is never granted here.
@@ -54,8 +85,11 @@ function displayNameFor(identity: VerifiedIdentity): string {
 export async function signInWithIdentity(
   db: Database,
   identity: VerifiedIdentity,
-  lists: Allowlists,
+  policy: SignInPolicy,
 ): Promise<SignInResult> {
+  // Checked before any database work, so a refused domain creates and changes nothing.
+  assertDomainAllowed(identity, policy.ALLOWED_EMAIL_DOMAINS);
+
   try {
     return await db.$transaction(async (tx) => {
       const existing = await tx.authIdentity.findUnique({
@@ -92,7 +126,7 @@ export async function signInWithIdentity(
         );
       }
 
-      const roles = initialRoles(email, identity.emailVerified, lists);
+      const roles = initialRoles(email, identity.emailVerified, policy);
       const user = await tx.user.create({
         data: {
           email,
