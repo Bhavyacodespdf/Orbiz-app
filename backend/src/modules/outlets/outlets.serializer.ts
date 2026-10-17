@@ -1,0 +1,61 @@
+import type { MenuCategory, MenuItem, Outlet } from '../../generated/prisma/client.js';
+import { inStock, stockStatus } from '../inventory/stock.js';
+
+export function toOutletSummary(outlet: Outlet) {
+  return {
+    id: outlet.id,
+    slug: outlet.slug,
+    name: outlet.name,
+    description: outlet.description,
+    location: outlet.location,
+    imageUrl: outlet.imageUrl,
+    status: outlet.status,
+    /** Only OPEN outlets accept orders (enforced again at checkout). */
+    acceptingOrders: outlet.status === 'OPEN' && outlet.isActive,
+    isSample: outlet.isSample,
+  };
+}
+
+/** Staff/admin view also shows whether the outlet is archived. */
+export function toOutletAdmin(outlet: Outlet) {
+  return { ...toOutletSummary(outlet), isActive: outlet.isActive };
+}
+
+export function toCategory(category: MenuCategory) {
+  return { id: category.id, name: category.name, sortOrder: category.sortOrder };
+}
+
+export function toCategoryAdmin(category: MenuCategory) {
+  return { ...toCategory(category), isActive: category.isActive };
+}
+
+export function toMenuItem(item: MenuItem) {
+  return {
+    id: item.id,
+    categoryId: item.categoryId,
+    name: item.name,
+    description: item.description,
+    pricePaise: item.pricePaise,
+    dietary: item.dietary,
+    /** Can be ordered right now: not marked sold out and, if counted, units left. */
+    isAvailable: inStock(item),
+    /** AVAILABLE, LOW_STOCK (still orderable) or SOLD_OUT. Quantities are never shown to students. */
+    stockStatus: stockStatus(item),
+    imageUrl: item.imageUrl,
+  };
+}
+
+export function toMenuItemAdmin(item: MenuItem) {
+  return {
+    ...toMenuItem(item),
+    isActive: item.isActive,
+    sortOrder: item.sortOrder,
+    /** The staff "sold out" switch (an override that stays until staff restore it). */
+    soldOutManually: !item.isAvailable,
+    fulfillmentType: item.fulfillmentType,
+    trackInventory: item.trackInventory,
+    stockQuantity: item.stockQuantity,
+    lowStockThreshold: item.lowStockThreshold,
+    stockUpdatedAt: item.stockUpdatedAt,
+  };
+}

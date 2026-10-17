@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/bricolage-grotesque/wght.css';
+@import '@fontsource-variable/figtree/wght.css';
+
+/*
+ * CampusCart design tokens — "Late-Night Diner".
+ * Every colour, font and radius used by components comes from here, so the
+ * whole look can be tuned in one place.
+ *
+ * Contrast (WCAG AA ≥ 4.5:1 for text) was checked for these text pairings:
+ *   espresso-900 on cream-100 15.6 · espresso-500 on cream-100 6.4
+ *   white on chili-500 5.0 · chili-600 on cream-100 6.4 · mustard-700 on cream-100 4.8
+ *   espresso-900 on mustard-500 7.3 · success-600 on cream-100 5.1
+ * espresso-400 (4.1) is for borders/decoration only — never body text.
+ */
+@theme {
+  --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-cream-50: #fffefb;
+  --color-cream-100: #fdfbf7;
+  --color-cream-200: #f6f0e4;
+  --color-cream-300: #ece2cf;
+
+  --color-chili-50: #fceeeb;
+  --color-chili-100: #f8d8d1;
+  --color-chili-200: #f0b0a3;
+  --color-chili-400: #dc6a55;
+  --color-chili-500: #c83e2a;
+  --color-chili-600: #a93221;
+  --color-chili-700: #87281b;
+
+  --color-mustard-50: #fdf5e6;
+  --color-mustard-100: #fae7c2;
+  --color-mustard-300: #f0c06e;
+  --color-mustard-500: #e6a133;
+  --color-mustard-600: #c7851c;
+  --color-mustard-700: #9a6514;
+  --color-mustard-800: #7a5410;
+
+  --color-espresso-50: #f5f1ef;
+  --color-espresso-100: #e8e0dc;
+  --color-espresso-200: #c9b9b1;
+  --color-espresso-400: #8a766e;
+  --color-espresso-500: #6b5952;
+  --color-espresso-700: #43322c;
+  --color-espresso-800: #352622;
+  --color-espresso-900: #2b1e1a;
+
+  --color-success-50: #e9f4ec;
+  --color-success-600: #2f7a4b;
+  --color-success-700: #25613c;
+
+  /* Surprise Meal's "Add Combo to Tray" accent. white on plum-600 7.6 · plum-700 on cream-100 9.1 */
+  --color-plum-50: #f5f0fb;
+  --color-plum-100: #e9dff7;
+  --color-plum-600: #6a3d9a;
+  --color-plum-700: #55307d;
+
+  --radius-control: 0.625rem;
+  --radius-panel: 1rem;
+
+  --shadow-press: 0 2px 0 0 rgb(43 30 26 / 0.18);
+  --shadow-lift: 0 1px 2px rgb(43 30 26 / 0.06), 0 8px 24px -12px rgb(43 30 26 / 0.18);
+
+  --animate-toast-in: toast-in 180ms ease-out;
+  --animate-fade-in: fade-in 160ms ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-cream-100 font-sans text-espresso-900 antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-chili-500;
+  }
+  dialog::backdrop {
+    background: rgb(43 30 26 / 0.55);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Receipt-style perforated bottom edge, used by order tickets. */
+@utility perforated {
+  --perf: 7px;
+  mask:
+    radial-gradient(circle at 50% 100%, transparent calc(var(--perf) - 0.5px), #000 var(--perf)) 50%
+      100% / calc(var(--perf) * 2.6) calc(var(--perf) * 1.2) repeat-x,
+    linear-gradient(#000, #000) top / 100% calc(100% - var(--perf) * 1.2 + 0.5px) no-repeat;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

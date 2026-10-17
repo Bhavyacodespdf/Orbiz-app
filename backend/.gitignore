@@ -1,0 +1,13 @@
+# Compiled server (npm run build)
+dist/
+
+# Generated Prisma client (npm install / prisma generate recreates it)
+src/generated/
+
+# Test coverage
+coverage/
+
+# .env (development) and .env.test hold secrets — only .env.example is committed
+.env
+.env.*
+!.env.example

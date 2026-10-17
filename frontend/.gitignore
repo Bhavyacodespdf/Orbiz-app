@@ -1,0 +1,17 @@
+# Production build (npm run build) and Vite's cache
+dist/
+.vite/
+
+# Test coverage
+coverage/
+
+# Playwright results, reports and traces
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Local environment files — only .env.example is committed
+.env
+.env.*
+!.env.example

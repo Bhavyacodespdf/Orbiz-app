@@ -1,0 +1,2154 @@
+// CampusCart database schema.
+// Models are added phase by phase, following docs/database-design.md.
+// The connection URL lives in prisma.config.ts (read from DATABASE_URL).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Identity, roles and sessions (Phase 3) ─────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum Role {
+  STUDENT
+  MANAGER
+  POS
+  ADMIN
+}
+
+/// How a role was granted. ALLOWLIST grants only happen when a new account is created.
+enum RoleGrantSource {
+  DEFAULT
+  ALLOWLIST
+  ADMIN
+  CLI
+}
+
+/// GOOGLE is real sign-in. DEV exists only for local development and automated tests
+/// (DEV_LOGIN_ENABLED) and is refused in production.
+enum IdentityProvider {
+  GOOGLE
+  DEV
+}
+
+enum AuditActorType {
+  USER
+  SYSTEM
+  CLI
+}
+
+model User {
+  id            String     @id @default(uuid()) @db.Uuid
+  /// Lower-cased. Never used to link sign-ins — the identity subject is.
+  email         String     @unique
+  emailVerified Boolean
+  displayName   String
+  avatarUrl     String?
+  phone         String?
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  identities   AuthIdentity[]
+  roles        UserRole[]     @relation("RoleHolder")
+  rolesGranted UserRole[]     @relation("RoleGrantedBy")
+  rolesRevoked UserRole[]     @relation("RoleRevokedBy")
+  sessions     Session[]
+  auditEntries AuditLog[]
+
+  staffAssignments        StaffAssignment[] @relation("AssignedStaff")
+  staffAssignmentsCreated StaffAssignment[] @relation("AssignmentCreatedBy")
+
+  cart            Cart?
+  orders          Order[]
+  wallet          Wallet?
+  paymentAttempts PaymentAttempt[]
+  statusChanges   OrderStatusHistory[]
+  counterPayments CounterPayment[]
+
+  pollsCreated            DailyPoll[]                 @relation("PollCreatedBy")
+  pollVotes               DailyPollVote[]
+  stockChanges            StockAdjustment[]
+  forecastRunsCreated     ForecastRun[]               @relation("ForecastRunCreatedBy")
+  stockPlansCreated       StockPlan[]                 @relation("StockPlanCreatedBy")
+  stockPlansSubmitted     StockPlan[]                 @relation("StockPlanSubmittedBy")
+  stockPlansApproved      StockPlan[]                 @relation("StockPlanApprovedBy")
+  stockPlansCompleted     StockPlan[]                 @relation("StockPlanCompletedBy")
+  stockPlanRevisions      StockPlanRevision[]
+  groupsHosted            GroupTray[]                 @relation("GroupHost")
+  groupMemberships        GroupMember[]
+  groupSettlementsCreated GroupSettlement[]           @relation("GroupSettlementCreatedBy")
+  groupShares             GroupShare[]
+  groupEvents             GroupEvent[]
+  banquetSettingsUpdated  BanquetSettings[]           @relation("BanquetSettingsUpdatedBy")
+  banquetsHosted          BanquetBooking[]            @relation("BanquetHost")
+  banquetsDecided         BanquetBooking[]            @relation("BanquetDecidedBy")
+  banquetStatusChanges    BanquetStatusHistory[]
+  peerSplitsOwned         PeerSplit[]                 @relation("PeerSplitOwner")
+  peerSplitParticipations PeerSplitParticipant[]
+  peerSettlementsPaid     PeerSplitSettlement[]       @relation("PeerSettlementPayer")
+  peerSettlementsReceived PeerSplitSettlement[]       @relation("PeerSettlementRecipient")
+  foodReviews             FoodReview[]
+  foodReviewsModerated    FoodReview[]                @relation("FoodReviewModeratedBy")
+  foodReviewReports       FoodReviewReport[]
+  savedMealCombos         SavedMealCombo[]
+  reorderEvents           ReorderEvent[]
+  pickupRedemptions       PickupCredential[]          @relation("PickupRedeemedBy")
+  pickupVerifications     PickupVerification[]
+  pickupAttempts          PickupVerificationAttempt[]
+  handoversGiven          OrderHandover[]
+  notifications           Notification[]
+}
+
+/// Links a sign-in provider's stable subject (Google "sub") to a user.
+model AuthIdentity {
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @db.Uuid
+  provider      IdentityProvider
+  subject       String
+  email         String
+  emailVerified Boolean
+  lastLoginAt   DateTime         @default(now())
+  createdAt     DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, subject])
+  @@unique([userId, provider])
+}
+
+/// One row per (user, role). Revocation is recorded, not deleted.
+model UserRole {
+  id           String          @id @default(uuid()) @db.Uuid
+  userId       String          @db.Uuid
+  role         Role
+  grantedVia   RoleGrantSource
+  grantedById  String?         @db.Uuid
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  revokedAt    DateTime?
+  revokedById  String?         @db.Uuid
+  revokeReason String?
+
+  user      User  @relation("RoleHolder", fields: [userId], references: [id], onDelete: Restrict)
+  grantedBy User? @relation("RoleGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  revokedBy User? @relation("RoleRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@unique([userId, role])
+}
+
+/// Server-side session. Only a SHA-256 hash of the cookie token is stored.
+model Session {
+  id                String   @id @default(uuid()) @db.Uuid
+  tokenHash         String   @unique
+  userId            String   @db.Uuid
+  createdAt         DateTime @default(now())
+  lastSeenAt        DateTime @default(now())
+  /// Sliding idle expiry, extended on use.
+  expiresAt         DateTime
+  /// Hard limit regardless of activity.
+  absoluteExpiresAt DateTime
+  userAgent         String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Append-only record of sensitive actions. Never stores secrets or tokens.
+model AuditLog {
+  id          String         @id @default(uuid()) @db.Uuid
+  actorType   AuditActorType
+  actorUserId String?        @db.Uuid
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ─── Outlets and menus (Phase 4) ────────────────────────────────────────────
+
+enum OutletStatus {
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+/// Staff roles that are scoped to particular outlets.
+enum StaffRole {
+  MANAGER
+  POS
+}
+
+/// Indian food-labelling convention: vegetarian, non-vegetarian, contains egg.
+enum Dietary {
+  VEG
+  NON_VEG
+  EGG
+}
+
+model Outlet {
+  id          String       @id @default(uuid()) @db.Uuid
+  slug        String       @unique
+  name        String
+  description String       @default("")
+  location    String       @default("")
+  imageUrl    String?
+  /// Operating status set by the outlet's manager. Only OPEN outlets accept orders.
+  status      OutletStatus @default(CLOSED)
+  /// Archived outlets are hidden from students. Outlets are never hard-deleted.
+  isActive    Boolean      @default(true)
+  /// True only for rows created by the development seed script.
+  isSample    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  /// Scheduled orders: weekly pickup hours (IST) and the rules for offering time slots.
+
+  /// No hours configured = no slots offered (nothing is assumed).
+
+  /// Minimum notice before a slot. Database CHECK 0–1440.
+
+  scheduleLeadMinutes Int @default(30)
+
+  /// Slot length. Database CHECK 5–120.
+
+  scheduleSlotMinutes Int @default(15)
+
+  /// How many days after today can be booked. Database CHECK 0–14.
+
+  scheduleDaysAhead Int @default(2)
+
+  /// Most scheduled orders per slot; null = no limit. Database CHECK 1–500.
+
+  scheduleSlotCapacity Int?
+
+  /// Kitchen timing (manager-set). How many orders the kitchen prepares at the same time.
+  /// Database CHECK 1–20. Default 1 is the conservative assumption until a manager sets it.
+  kitchenParallelOrders    Int            @default(1)
+  /// MANUAL (default): staff accept every order. AUTO: eligible orders are accepted by rules.
+  autoAcceptMode           AutoAcceptMode @default(MANUAL)
+  /// AUTO only accepts while the order's estimated wait is at most this. Database CHECK 5–120.
+  autoAcceptMaxWaitMinutes Int            @default(30)
+
+  categories MenuCategory[]
+
+  hours               OutletHours[]
+  items               MenuItem[]
+  staff               StaffAssignment[]
+  carts               Cart[]
+  orders              Order[]
+  orderAcceptances    OutletOrderAcceptance[]
+  demandDays          DemandDaily[]
+  forecastRuns        ForecastRun[]
+  stockPlans          StockPlan[]
+  groupTrays          GroupTray[]
+  banquetSettings     BanquetSettings?
+  banquetBookings     BanquetBooking[]
+  dailyCounters       OutletDailyCounter[]
+  polls               DailyPoll[]
+  foodReviews         FoodReview[]
+  savedMealCombos     SavedMealCombo[]
+  reorderEvents       ReorderEvent[]
+  pickupCredentials   PickupCredential[]
+  pickupVerifications PickupVerification[]
+  pickupAttempts      PickupVerificationAttempt[]
+  handovers           OrderHandover[]
+  notifications       Notification[]
+  kitchenStat         OutletKitchenStat?
+}
+
+/// Which outlets a Manager or POS user may operate. Holding the role alone is not enough.
+model StaffAssignment {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  outletId    String    @db.Uuid
+  role        StaffRole
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  user      User   @relation("AssignedStaff", fields: [userId], references: [id], onDelete: Restrict)
+  outlet    Outlet @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("AssignmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([userId, outletId, role])
+  @@index([outletId])
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  outletId  String   @db.Uuid
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outlet Outlet     @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  items  MenuItem[]
+
+  @@unique([outletId, name])
+  /// Lets MenuItem reference (categoryId, outletId) so an item can never sit in another outlet's category.
+  @@unique([id, outletId])
+}
+
+model MenuItem {
+  id                String           @id @default(uuid()) @db.Uuid
+  outletId          String           @db.Uuid
+  categoryId        String           @db.Uuid
+  name              String
+  description       String           @default("")
+  /// Integer paise (₹1 = 100). Database CHECK: > 0.
+  pricePaise        Int
+  dietary           Dietary?
+  /// false = marked sold out by staff (a manual override that stays until staff restore it).
+  /// Shown to students but cannot be ordered.
+  isAvailable       Boolean          @default(true)
+  /// Quantity-based stock is opt-in per item. Untracked items have no quantity (null).
+  /// Database CHECK: stockQuantity is set exactly when trackInventory is true, and is >= 0.
+  /// Packaged or handmade: decides the scheduled-order no-show policy (refund/restock).
+  /// Set by the manager; null = not classified yet (treated as HANDMADE by the policy).
+  fulfillmentType   FoodFulfillment?
+  /// Configured Preparation Time in minutes (manager-set; null = not configured yet).
+  /// Database CHECK 1–180. Never overwritten by the learned estimate.
+  prepMinutes       Int?
+  prepUpdatedAt     DateTime?
+  trackInventory    Boolean          @default(false)
+  stockQuantity     Int?
+  /// At or below this (and above 0) a tracked item is LOW STOCK. Database CHECK >= 0.
+  lowStockThreshold Int              @default(0)
+  stockUpdatedAt    DateTime?
+  /// Deactivated items are hidden from students; kept for order history.
+  isActive          Boolean          @default(true)
+  imageUrl          String?
+  sortOrder         Int              @default(0)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  outlet            Outlet               @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  category          MenuCategory         @relation(fields: [categoryId, outletId], references: [id, outletId], onDelete: Restrict)
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  pollOptions       DailyPollOption[]
+  stockAdjustments  StockAdjustment[]
+  demandDays        DemandDaily[]
+  forecasts         Forecast[]
+  stockPlanItems    StockPlanItem[]
+  planningDecisions PlanningDecision[]
+  groupItems        GroupItem[]
+  banquetItems      BanquetBookingItem[]
+  reviews           FoodReview[]
+  savedComboItems   SavedMealComboItem[]
+  prepStat          PrepTimeStat?
+
+  @@unique([outletId, name])
+  /// Lets poll options reference (menuItemId, outletId) so a dish from another outlet can never be offered.
+  @@unique([id, outletId])
+  @@index([outletId, isActive])
+  @@index([categoryId])
+}
+
+// ─── Cart, orders, wallet and payments (Phase 5) ────────────────────────────
+
+/// One cart per user, holding items from at most one outlet.
+model Cart {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @db.Uuid
+  /// The outlet the current items come from; null when the cart is empty.
+  outletId     String?  @db.Uuid
+  /// Idempotency key of the last combo added in one go (Surprise Meal), so a repeated
+  /// submission of the same combo is recognised and not added twice.
+  lastComboKey String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  outlet Outlet?    @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  items  CartItem[]
+}
+
+/// Holds only a menu item and quantity — never a price. Prices are read live from MenuItem.
+model CartItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  cartId     String   @db.Uuid
+  menuItemId String   @db.Uuid
+  /// Database CHECK: 1–10.
+  quantity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@unique([cartId, menuItemId])
+}
+
+/// Fulfilment state. Kept separate from payment state.
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY
+  COMPLETED
+  REJECTED
+  CANCELLED
+  /// A scheduled order that was ready but not collected within the grace period, settled by
+  /// the no-show policy (system only, terminal).
+  NO_SHOW
+}
+
+/// IMMEDIATE = prepared now (the original behaviour). SCHEDULED = for a chosen pickup slot.
+enum OrderTiming {
+  IMMEDIATE
+  SCHEDULED
+}
+
+enum PaymentMethod {
+  WALLET
+  COUNTER
+  /// Paid in shares by group-tray members before the order was placed.
+  GROUP
+}
+
+enum PaymentStatus {
+  /// Pay-at-counter order not yet paid.
+  PENDING_COUNTER
+  PAID
+  REFUNDED
+  /// Unpaid counter order that was cancelled or rejected (or not collected).
+  VOID
+  /// Wallet order of which part was refunded (scheduled-order no-show policy).
+  PARTIALLY_REFUNDED
+}
+
+/// Packaged food can be restocked and is 90% refundable on a no-show; handmade is neither.
+enum FoodFulfillment {
+  PACKAGED
+  HANDMADE
+}
+
+/// Per-outlet, per-day sequence used for human-friendly pickup codes (e.g. N-007).
+model OutletDailyCounter {
+  outletId   String   @db.Uuid
+  /// Calendar date in India Standard Time.
+  day        DateTime @db.Date
+  lastNumber Int      @default(0)
+
+  outlet Outlet @relation(fields: [outletId], references: [id], onDelete: Restrict)
+
+  @@id([outletId, day])
+}
+
+model Order {
+  id                  String        @id @default(uuid()) @db.Uuid
+  userId              String        @db.Uuid
+  outletId            String        @db.Uuid
+  pickupDay           DateTime      @db.Date
+  pickupNumber        Int
+  /// Shown to the student and the counter, e.g. "N-007". Unique per outlet per day.
+  pickupCode          String
+  status              OrderStatus   @default(PLACED)
+  paymentMethod       PaymentMethod
+  paymentStatus       PaymentStatus
+  /// Integer paise, calculated on the server from live menu prices.
+  subtotalPaise       Int
+  /// Loyalty points spent on this order. Database CHECK: discount = points × 100, total = subtotal − discount.
+  pointsRedeemed      Int           @default(0)
+  pointsDiscountPaise Int           @default(0)
+  /// IMMEDIATE for every order placed before scheduling existed (migration default).
+  timing              OrderTiming   @default(IMMEDIATE)
+  /// The pickup slot start, set exactly when timing = SCHEDULED (database CHECK).
+  scheduledFor        DateTime?
+  /// ₹10 (1000) for scheduled orders, 0 otherwise — set by the server (database CHECK).
+  scheduledFeePaise   Int           @default(0)
+  totalPaise          Int
+  currency            String        @default("INR")
+  /// Client-generated key; a repeated checkout with the same key returns the same order.
+  idempotencyKey      String
+  cancelReason        String?
+  /// Bumped on every status/payment change, so clients can ignore stale updates.
+  version             Int           @default(1)
+  placedAt            DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  outlet             Outlet                 @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  items              OrderItem[]
+  history            OrderStatusHistory[]
+  walletTransactions WalletTransaction[]
+  loyalty            LoyaltyTransaction[]
+  stockAdjustments   StockAdjustment[]
+  counterPayment     CounterPayment?
+  noShow             NoShowSettlement?
+  acceptance         OutletOrderAcceptance?
+  groupTray          GroupTray?
+  foodReviews        FoodReview[]
+  reorderEvents      ReorderEvent[]
+  pickupCredentials  PickupCredential[]
+  handover           OrderHandover?
+  estimate           OrderEstimate?
+  predictions        OrderPrediction[]
+  autoAcceptDecision AutoAcceptDecision?
+
+  @@unique([userId, idempotencyKey])
+  @@unique([outletId, pickupDay, pickupNumber])
+  @@index([outletId, status, placedAt])
+  @@index([outletId, scheduledFor])
+  @@index([userId, placedAt])
+}
+
+/// A snapshot of what was bought. Never changes when the menu changes later.
+model OrderItem {
+  id                  String           @id @default(uuid()) @db.Uuid
+  orderId             String           @db.Uuid
+  menuItemId          String           @db.Uuid
+  name                String
+  unitPricePaise      Int
+  quantity            Int
+  lineTotalPaise      Int
+  /// Snapshot of the menu item's classification at placement; later changes don't apply.
+  fulfillmentType     FoodFulfillment?
+  /// Staff flagged this line as not fit to sell again (opened, damaged, expired).
+  unsuitableForResale Boolean          @default(false)
+  unsuitableReason    String?
+  /// No-show outcome for this line (null until processed). Paise; quantities in units.
+  noShowPaidPaise     Int?
+  noShowRefundPaise   Int?
+  noShowFeePaise      Int?
+  noShowRestockedQty  Int?
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  /// Menu ranking (popularity, Quick Reorder) aggregates order lines per dish.
+  @@index([menuItemId, orderId])
+  @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id          String       @id @default(uuid()) @db.Uuid
+  orderId     String       @db.Uuid
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  actorUserId String?      @db.Uuid
+  actorRole   Role?
+  reason      String?
+  createdAt   DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+}
+
+/// One wallet per user. balancePaise is the authoritative running total
+/// (database CHECK >= 0) and only ever changes together with a ledger row.
+model Wallet {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @db.Uuid
+  balancePaise  Int      @default(0)
+  /// Loyalty points (1 point = ₹1 off an order). Database CHECK >= 0. Changes only with a LoyaltyTransaction row.
+  pointsBalance Int      @default(0)
+  currency      String   @default("INR")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions    WalletTransaction[]
+  paymentAttempts PaymentAttempt[]
+  loyalty         LoyaltyTransaction[]
+}
+
+enum WalletTransactionType {
+  RECHARGE
+  ORDER_DEBIT
+  REFUND
+  REVERSAL
+  /// A group-tray member paying their share to CampusCart.
+  GROUP_SHARE_PAYMENT
+  /// Repaying a peer split: money leaving this wallet.
+  PEER_TRANSFER_OUT
+  /// Repaying a peer split: money arriving in the owner’s wallet.
+  PEER_TRANSFER_IN
+}
+
+enum TransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+/// The wallet ledger. COMPLETED rows are never modified; corrections are new rows.
+model WalletTransaction {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  walletId              String                  @db.Uuid
+  type                  WalletTransactionType
+  direction             TransactionDirection
+  /// Always positive; direction says whether it was added or taken. Database CHECK > 0.
+  amountPaise           Int
+  /// Wallet balance right after this entry took effect. Set when COMPLETED.
+  balanceAfterPaise     Int?
+  status                WalletTransactionStatus
+  orderId               String?                 @db.Uuid
+  paymentAttemptId      String?                 @unique @db.Uuid
+  reversesTransactionId String?                 @unique @db.Uuid
+  /// Unique processing reference: a second credit/debit for the same event is impossible.
+  idempotencyKey        String                  @unique
+  description           String
+  /// True for anything funded by the mock payment simulator — never real money.
+  isSimulated           Boolean
+  createdAt             DateTime                @default(now())
+  completedAt           DateTime?
+
+  wallet               Wallet               @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  order                Order?               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  paymentAttempt       PaymentAttempt?      @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  reverses             WalletTransaction?   @relation("Reversal", fields: [reversesTransactionId], references: [id], onDelete: Restrict)
+  reversedBy           WalletTransaction?   @relation("Reversal")
+  groupSharePayment    GroupShare?          @relation("GroupSharePayment")
+  groupShareRefund     GroupShare?          @relation("GroupShareRefund")
+  peerSettlementDebit  PeerSplitSettlement? @relation("PeerSettlementDebit")
+  peerSettlementCredit PeerSplitSettlement? @relation("PeerSettlementCredit")
+  peerReversalDebit    PeerSplitSettlement? @relation("PeerSettlementReversalDebit")
+  peerReversalCredit   PeerSplitSettlement? @relation("PeerSettlementReversalCredit")
+
+  /// At most one debit and one refund per order.
+  @@unique([orderId, type])
+  @@index([walletId, createdAt])
+}
+
+enum PaymentPurpose {
+  WALLET_RECHARGE
+}
+
+enum PaymentProvider {
+  MOCK
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+/// An attempt to collect money through a payment provider (only the mock simulator for now).
+model PaymentAttempt {
+  id                String               @id @default(uuid()) @db.Uuid
+  userId            String               @db.Uuid
+  walletId          String               @db.Uuid
+  purpose           PaymentPurpose
+  provider          PaymentProvider
+  providerReference String               @unique
+  amountPaise       Int
+  currency          String               @default("INR")
+  status            PaymentAttemptStatus
+  /// Bonus points promised when the recharge started; awarded only if it succeeds.
+  bonusPoints       Int                  @default(0)
+  isSimulated       Boolean
+  idempotencyKey    String
+  failureReason     String?
+  expiresAt         DateTime
+  completedAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  wallet            Wallet              @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  walletTransaction WalletTransaction?
+  loyaltyAward      LoyaltyTransaction?
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+}
+
+// ─── Counter payments (Phase 7) ─────────────────────────────────────────────
+
+/// Money actually received at the counter, recorded by a POS user. One per order.
+model CounterPayment {
+  id           String   @id @default(uuid()) @db.Uuid
+  orderId      String   @unique @db.Uuid
+  /// Integer paise; always equals the order total. Database CHECK > 0.
+  amountPaise  Int
+  recordedById String   @db.Uuid
+  note         String?
+  recordedAt   DateTime @default(now())
+
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  recordedBy User  @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+}
+
+// ─── Today's Special voting ─────────────────────────────────────────────────
+
+/// DRAFT → OPEN → CLOSED → FINALIZED. Only OPEN polls inside their window accept votes.
+enum DailyPollStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  FINALIZED
+}
+
+enum DailyPollOutcome {
+  /// One dish had strictly the most votes.
+  WINNER
+  /// Several dishes tied for the most votes; the outlet manager chose one of them.
+  TIE_RESOLVED_BY_MANAGER
+  /// Nobody voted for an eligible dish, so there is no Today's Special.
+  NO_VOTES
+}
+
+/// A student poll that decides an outlet's Today's Special for one calendar day (IST).
+/// A FINALIZED poll with a winner IS that day's special; there is no separate table.
+model DailyPoll {
+  id              String            @id @default(uuid()) @db.Uuid
+  outletId        String            @db.Uuid
+  /// Calendar date in India Standard Time that the special applies to.
+  day             DateTime          @db.Date
+  status          DailyPollStatus   @default(DRAFT)
+  /// Voting window. Checked against the database clock, never the client's.
+  opensAt         DateTime
+  /// Database CHECK: after opensAt.
+  closesAt        DateTime
+  /// When false, students see vote counts only after the poll closes.
+  showLiveResults Boolean           @default(false)
+  openedAt        DateTime?
+  closedAt        DateTime?
+  finalizedAt     DateTime?
+  /// Set exactly when FINALIZED (database CHECK).
+  outcome         DailyPollOutcome?
+  /// Null exactly when the outcome is NO_VOTES (database CHECK).
+  winnerOptionId  String?           @db.Uuid
+  /// Snapshot taken at finalization. Votes cannot change after closing, so it never drifts.
+  totalVotes      Int?
+  winnerVotes     Int?
+  createdById     String            @db.Uuid
+  /// Bumped on every change, so clients can ignore stale updates.
+  version         Int               @default(1)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  outlet    Outlet            @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  createdBy User              @relation("PollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  options   DailyPollOption[] @relation("PollOptions")
+  votes     DailyPollVote[]
+  /// The winner must be one of THIS poll's options.
+  winner    DailyPollOption?  @relation("PollWinner", fields: [winnerOptionId, id], references: [id, pollId], onDelete: Restrict)
+
+  /// At most one poll — and so at most one Today's Special — per outlet per day.
+  @@unique([outletId, day])
+  @@unique([id, outletId])
+  @@index([day, status])
+}
+
+/// A dish offered in a poll. Must belong to the poll's outlet (composite foreign keys).
+model DailyPollOption {
+  id         String @id @default(uuid()) @db.Uuid
+  pollId     String @db.Uuid
+  outletId   String @db.Uuid
+  menuItemId String @db.Uuid
+  sortOrder  Int    @default(0)
+
+  poll     DailyPoll       @relation("PollOptions", fields: [pollId, outletId], references: [id, outletId], onDelete: Restrict)
+  menuItem MenuItem        @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+  votes    DailyPollVote[]
+  wonPolls DailyPoll[]     @relation("PollWinner")
+
+  @@unique([pollId, menuItemId])
+  @@unique([id, pollId])
+}
+
+/// One row per student per poll. Changing a vote updates this row, so only the latest choice counts.
+model DailyPollVote {
+  id        String   @id @default(uuid()) @db.Uuid
+  pollId    String   @db.Uuid
+  optionId  String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  poll   DailyPoll       @relation(fields: [pollId], references: [id], onDelete: Restrict)
+  /// The option must belong to the same poll.
+  option DailyPollOption @relation(fields: [optionId, pollId], references: [id, pollId], onDelete: Restrict)
+  user   User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([pollId, userId])
+  @@index([pollId, optionId])
+}
+
+// ─── Loyalty points ─────────────────────────────────────────────────────────
+
+enum LoyaltyTransactionType {
+  /// Bonus for a successful recharge of an exact slab amount.
+  EARNED_RECHARGE
+  /// Spent as a discount on an order.
+  REDEEMED_ORDER
+  /// Given back when that order was rejected or cancelled.
+  RESTORED_ORDER
+}
+
+/// The points ledger. Rows are never modified; every change to Wallet.pointsBalance has one.
+model LoyaltyTransaction {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  walletId           String                 @db.Uuid
+  type               LoyaltyTransactionType
+  direction          TransactionDirection
+  /// Always positive. Database CHECK > 0.
+  points             Int
+  /// Wallet.pointsBalance right after this entry. Database CHECK >= 0.
+  pointsBalanceAfter Int
+  /// Set for EARNED_RECHARGE. Unique: a recharge can earn points only once.
+  paymentAttemptId   String?                @unique @db.Uuid
+  /// Set for REDEEMED_ORDER and RESTORED_ORDER.
+  orderId            String?                @db.Uuid
+  reversesId         String?                @unique @db.Uuid
+  idempotencyKey     String                 @unique
+  description        String
+  /// True when the points came from (or relate to) simulated test-mode money.
+  isSimulated        Boolean
+  createdAt          DateTime               @default(now())
+
+  wallet         Wallet              @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  paymentAttempt PaymentAttempt?     @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  order          Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  reverses       LoyaltyTransaction? @relation("LoyaltyReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy     LoyaltyTransaction? @relation("LoyaltyReversal")
+
+  /// At most one redemption and one restoration per order.
+  @@unique([orderId, type])
+  @@index([walletId, createdAt])
+}
+
+// ─── Menu item stock ────────────────────────────────────────────────────────
+
+enum StockAdjustmentType {
+  RESTOCK
+  REMOVAL
+  /// A counted quantity replaced the recorded one (stocktake).
+  COUNT_SET
+  /// Taken by a placed order.
+  ORDER_DEDUCTION
+  /// Given back when that order was rejected or cancelled.
+  ORDER_RESTORE
+  TRACKING_ENABLED
+  TRACKING_DISABLED
+  THRESHOLD_CHANGED
+  MARKED_SOLD_OUT
+  MARKED_AVAILABLE
+}
+
+/// Append-only history of every stock and availability change: who, when, how much, why.
+model StockAdjustment {
+  id                String              @id @default(uuid()) @db.Uuid
+  menuItemId        String              @db.Uuid
+  outletId          String              @db.Uuid
+  type              StockAdjustmentType
+  /// Signed change in quantity (0 for status-only changes).
+  quantityChange    Int
+  previousQuantity  Int?
+  resultingQuantity Int?
+  /// Set for ORDER_DEDUCTION / ORDER_RESTORE (database CHECK).
+  orderId           String?             @db.Uuid
+  actorUserId       String?             @db.Uuid
+  actorRole         Role?
+  reason            String?
+  /// Set when the restock was recorded against a weekly stock plan line.
+  planItemId        String?             @db.Uuid
+  /// Client retry key for planner restocks: the same key never restocks twice.
+  idempotencyKey    String?             @unique
+  createdAt         DateTime            @default(now())
+
+  menuItem MenuItem       @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+  order    Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor    User?          @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  planItem StockPlanItem? @relation(fields: [planItemId], references: [id], onDelete: Restrict)
+
+  /// An order deducts, and restores, each item at most once.
+  @@unique([orderId, menuItemId, type])
+  @@index([outletId, createdAt])
+  @@index([menuItemId, createdAt])
+  @@index([planItemId])
+}
+
+// ─── Scheduled orders ───────────────────────────────────────────────────────
+
+/// Pickup hours for one weekday at one outlet, in minutes after midnight IST.
+model OutletHours {
+  id           String @id @default(uuid()) @db.Uuid
+  outletId     String @db.Uuid
+  /// 0 = Sunday … 6 = Saturday (IST).
+  weekday      Int
+  /// Database CHECK: 0 <= opensMinute < closesMinute <= 1440.
+  opensMinute  Int
+  closesMinute Int
+
+  outlet Outlet @relation(fields: [outletId], references: [id], onDelete: Restrict)
+
+  @@unique([outletId, weekday])
+}
+
+// ─── Scheduled-order no-show policy ─────────────────────────────────────────
+
+enum NoShowStatus {
+  /// Settled: refund (if any), restocking and status change all committed together.
+  PROCESSED
+  /// The last attempt failed and rolled back; the worker retries, an admin can retry now.
+  FAILED
+}
+
+/// One per no-show order: the audit record and the guard against processing it twice.
+model NoShowSettlement {
+  id                        String       @id @default(uuid()) @db.Uuid
+  orderId                   String       @unique @db.Uuid
+  status                    NoShowStatus
+  pickupDeadline            DateTime
+  attempts                  Int          @default(0)
+  lastError                 String?
+  processedAt               DateTime?
+  /// Sum of the 90% refunds on packaged lines (paise). Database CHECK >= 0.
+  refundPaise               Int          @default(0)
+  /// Sum of the 10% kept on packaged lines.
+  convenienceFeePaise       Int          @default(0)
+  /// The ₹10 scheduled-order fee, kept (non-refundable).
+  scheduledFeeRetainedPaise Int          @default(0)
+  restockedUnits            Int          @default(0)
+  refundTransactionId       String?      @unique @db.Uuid
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+}
+
+/// Order-acceptance capacity: one row per order an outlet took on, written in the checkout
+/// transaction (rolled back with it) under a per-outlet lock. The rolling-window limit counts these
+/// rows, so an order is counted exactly once, whatever happens to its status later.
+model OutletOrderAcceptance {
+  orderId    String   @id @db.Uuid
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  outletId   String   @db.Uuid
+  outlet     Outlet   @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  /// Database clock (UTC) after the outlet's capacity lock was taken.
+  acceptedAt DateTime
+
+  @@index([outletId, acceptedAt])
+}
+
+// ─── Weekly demand forecasting and stock planning ──────────────────────────
+
+/// Demand and stock facts for one menu item on one IST collection day, recomputed from the
+/// source of truth (orders + the stock ledger) on every aggregation. Recomputing (not
+/// incrementing) means an order is counted once whatever its lifecycle, and reruns are harmless.
+model DemandDaily {
+  id               String           @id @default(uuid()) @db.Uuid
+  outletId         String           @db.Uuid
+  menuItemId       String           @db.Uuid
+  /// IST collection day (Order.pickupDay): the day the kitchen prepares for.
+  businessDate     DateTime         @db.Date
+  /// 0 = Monday … 6 = Sunday.
+  weekday          Int
+  /// Every unit on orders for this day, whatever happened next.
+  unitsOrdered     Int
+  /// Withdrawn by the student (not demand).
+  unitsCancelled   Int
+  /// Refused or cancelled by the outlet (demand that wasn't met).
+  unitsRejected    Int
+  unitsFulfilled   Int
+  unitsNoShow      Int
+  /// Still in progress when aggregated.
+  unitsOpen        Int
+  unitsScheduled   Int
+  unitsImmediate   Int
+  /// Food value of demanded units (ordered − cancelled), at the prices actually charged.
+  demandValuePaise Int
+  /// From the stock ledger, by IST day of the movement.
+  unitsDeducted    Int
+  unitsRestored    Int
+  unitsReplenished Int
+  /// Stock removals (the ledger's REMOVAL: waste, damage, expiry).
+  unitsWasted      Int
+  /// Counted stock at the start and end of the day; null when not counted.
+  openingStock     Int?
+  closingStock     Int?
+  /// Minutes of the day the item could not be ordered (sold out, or counted at 0).
+  stockoutMinutes  Int
+  /// True when a stockout means sales may understate demand.
+  censored         Boolean
+  /// False when the outlet had no orders at all that day (likely closed).
+  outletActive     Boolean
+  categoryId       String           @db.Uuid
+  fulfillmentType  FoodFulfillment?
+  source           String           @default("ORDERS_AND_STOCK_LEDGER")
+  computedAt       DateTime
+  createdAt        DateTime         @default(now())
+
+  outlet   Outlet   @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  menuItem MenuItem @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+
+  @@unique([outletId, menuItemId, businessDate])
+  @@index([outletId, businessDate])
+}
+
+enum ForecastConfidence {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// One forecasting run for one outlet and target week. Only evaluation is ever added later.
+model ForecastRun {
+  id              String    @id @default(uuid()) @db.Uuid
+  outletId        String    @db.Uuid
+  weekStart       DateTime  @db.Date
+  /// History used is strictly before this IST date (no future information).
+  asOfDate        DateTime  @db.Date
+  historyFrom     DateTime  @db.Date
+  historyTo       DateTime  @db.Date
+  model           String
+  modelVersion    String
+  /// MANUAL (staff) or AUTO (scheduled job).
+  trigger         String
+  createdByUserId String?   @db.Uuid
+  /// Filled in once the target days have passed: { evaluatedDays, mae, wape, bias, … }.
+  evaluation      Json?
+  evaluatedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  outlet    Outlet      @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  createdBy User?       @relation("ForecastRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  forecasts Forecast[]
+  plans     StockPlan[]
+
+  @@index([outletId, weekStart, createdAt])
+}
+
+model Forecast {
+  id             String             @id @default(uuid()) @db.Uuid
+  runId          String             @db.Uuid
+  outletId       String             @db.Uuid
+  menuItemId     String             @db.Uuid
+  targetDate     DateTime           @db.Date
+  /// Days between the run's as-of date and the target date.
+  horizonDays    Int
+  quantity       Float
+  lower          Float
+  upper          Float
+  confidence     ForecastConfidence
+  /// The exact inputs used, so the forecast can be reproduced and audited.
+  features       Json
+  actualDemand   Int?
+  actualCensored Boolean?
+  absError       Float?
+  evaluatedAt    DateTime?
+
+  run      ForecastRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  menuItem MenuItem    @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+
+  @@unique([runId, menuItemId, targetDate])
+  @@index([outletId, targetDate])
+}
+
+enum StockPlanStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  COMPLETED
+  /// Replaced by a newer version before approval.
+  SUPERSEDED
+}
+
+enum PlanAction {
+  NONE
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+/// A weekly stock plan. Regenerating creates a new version; nothing is overwritten.
+model StockPlan {
+  id                    String          @id @default(uuid()) @db.Uuid
+  outletId              String          @db.Uuid
+  weekStart             DateTime        @db.Date
+  weekEnd               DateTime        @db.Date
+  version               Int
+  status                StockPlanStatus @default(DRAFT)
+  forecastRunId         String          @db.Uuid
+  /// "baseline" or a validated learned policy.
+  policyName            String
+  policyVersion         String
+  totalForecastUnits    Float
+  totalRecommendedUnits Int
+  notes                 String          @default("")
+  createdByUserId       String?         @db.Uuid
+  submittedByUserId     String?         @db.Uuid
+  submittedAt           DateTime?
+  approvedByUserId      String?         @db.Uuid
+  approvedAt            DateTime?
+  completedByUserId     String?         @db.Uuid
+  completedAt           DateTime?
+  /// Outcome summary once the week has ended.
+  outcome               Json?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  outlet      Outlet              @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  forecastRun ForecastRun         @relation(fields: [forecastRunId], references: [id], onDelete: Restrict)
+  createdBy   User?               @relation("StockPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  submittedBy User?               @relation("StockPlanSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  approvedBy  User?               @relation("StockPlanApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  completedBy User?               @relation("StockPlanCompletedBy", fields: [completedByUserId], references: [id], onDelete: Restrict)
+  items       StockPlanItem[]
+  revisions   StockPlanRevision[]
+
+  @@unique([outletId, weekStart, version])
+  @@index([outletId, weekStart, status])
+}
+
+model StockPlanItem {
+  id               String             @id @default(uuid()) @db.Uuid
+  planId           String             @db.Uuid
+  outletId         String             @db.Uuid
+  menuItemId       String             @db.Uuid
+  /// [{ date, quantity, lower, upper }] from the plan's forecast run.
+  dailyForecast    Json
+  forecastUnits    Float
+  confidence       ForecastConfidence
+  tracked          Boolean
+  /// Live counted stock when the plan was generated; null when not counted.
+  currentStock     Int?
+  /// CampusCart has no purchase orders, so nothing is "on the way": always 0 for now.
+  expectedIncoming Int                @default(0)
+  safetyStock      Int
+  targetStock      Int
+  action           PlanAction
+  /// The policy's recommendation, never changed after generation.
+  recommendedQty   Int
+  /// What staff decided (starts equal to the recommendation).
+  finalQty         Int
+  overridden       Boolean            @default(false)
+  overrideReason   String?
+  explanation      Json
+  /// Units actually restocked against this line (sum of its linked ledger entries).
+  replenishedQty   Int                @default(0)
+  outcome          Json?
+
+  plan        StockPlan           @relation(fields: [planId], references: [id], onDelete: Restrict)
+  menuItem    MenuItem            @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+  revisions   StockPlanRevision[]
+  adjustments StockAdjustment[]
+  decision    PlanningDecision?
+
+  @@unique([planId, menuItemId])
+}
+
+/// Append-only: every quantity change, note and status change on a plan.
+model StockPlanRevision {
+  id          String           @id @default(uuid()) @db.Uuid
+  planId      String           @db.Uuid
+  planItemId  String?          @db.Uuid
+  kind        String
+  fromQty     Int?
+  toQty       Int?
+  fromStatus  StockPlanStatus?
+  toStatus    StockPlanStatus?
+  reason      String?
+  actorUserId String?          @db.Uuid
+  actorRole   Role?
+  createdAt   DateTime         @default(now())
+
+  plan     StockPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  planItem StockPlanItem? @relation(fields: [planItemId], references: [id], onDelete: Restrict)
+  actor    User?          @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([planId, createdAt])
+}
+
+enum DecisionStatus {
+  /// Waiting for the week to end and its demand to be aggregated.
+  PENDING
+  FINALIZED
+  /// Not usable for learning (e.g. stock not counted); the reason is recorded.
+  EXCLUDED
+}
+
+/// Reinforcement-learning experience: the state known at decision time, the action, and the
+/// outcome observed after the week. The state is frozen at approval; the outcome is added only
+/// after the week ends.
+model PlanningDecision {
+  id                 String         @id @default(uuid()) @db.Uuid
+  planItemId         String         @unique @db.Uuid
+  outletId           String         @db.Uuid
+  menuItemId         String         @db.Uuid
+  periodStart        DateTime       @db.Date
+  periodEnd          DateTime       @db.Date
+  decidedAt          DateTime
+  policyName         String
+  policyVersion      String
+  state              Json
+  /// [{ action, quantity }] for every action the policy could have chosen.
+  candidateActions   Json
+  action             PlanAction
+  recommendedQty     Int
+  approvedQty        Int
+  replenishedQty     Int?
+  demandUnits        Int?
+  fulfilledUnits     Int?
+  stockoutDays       Int?
+  estimatedLostUnits Int?
+  wastedUnits        Int?
+  leftoverUnits      Int?
+  censored           Boolean?
+  rewardComponents   Json?
+  reward             Float?
+  status             DecisionStatus @default(PENDING)
+  excludeReason      String?
+  finalizedAt        DateTime?
+  createdAt          DateTime       @default(now())
+
+  planItem StockPlanItem @relation(fields: [planItemId], references: [id], onDelete: Restrict)
+  menuItem MenuItem      @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+
+  @@index([policyName, policyVersion, periodStart])
+  @@index([status, periodEnd])
+}
+
+enum PolicyStatus {
+  /// Trained but not good enough (or not enough data); never used.
+  REJECTED
+  /// Passed the holdout comparison; not used until explicitly activated.
+  VALIDATED
+  ACTIVE
+  RETIRED
+}
+
+/// A learned replenishment policy: the artifact, the data it saw and how it was evaluated.
+model PolicyVersion {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String
+  version      String
+  status       PolicyStatus
+  algorithm    String
+  /// The policy itself (state bucket → action) and its hyper-parameters.
+  artifact     Json
+  rewardConfig Json
+  /// Decision IDs used for training and for the time-based holdout.
+  dataset      Json
+  evaluation   Json
+  notes        String       @default("")
+  activatedAt  DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@unique([name, version])
+  @@index([name, status])
+}
+
+/// Bookkeeping for the planning jobs: what ran, when, and any failure.
+model PlanningJobRun {
+  id         String    @id @default(uuid()) @db.Uuid
+  job        String
+  key        String
+  status     String
+  attempts   Int       @default(0)
+  lastError  String?
+  details    Json?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@unique([job, key])
+}
+
+// ─── Group dining, banquets and peer splits ───────────────────────────────
+
+enum GroupTrayStatus {
+  /// Members are adding food.
+  ACTIVE
+  /// Prices and the split are locked; members are paying their shares.
+  CHECKOUT
+  /// Every share was paid and the order was placed.
+  ORDERED
+  CANCELLED
+}
+
+enum GroupMemberRole {
+  HOST
+  MEMBER
+}
+
+enum GroupMemberStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum AllocationMode {
+  BY_DISH
+  EQUAL
+  PERCENTAGE
+  CUSTOM
+}
+
+/// A shared tray at one outlet. Joined with an unguessable code.
+model GroupTray {
+  id             String          @id @default(uuid()) @db.Uuid
+  code           String          @unique
+  name           String
+  description    String          @default("")
+  outletId       String          @db.Uuid
+  hostUserId     String          @db.Uuid
+  status         GroupTrayStatus @default(ACTIVE)
+  maxMembers     Int
+  /// After this, nobody new can join (null = open until checkout).
+  joinClosesAt   DateTime?
+  allocationMode AllocationMode  @default(BY_DISH)
+  /// Bumped on every change, so concurrent edits can't overwrite each other.
+  version        Int             @default(1)
+  orderId        String?         @unique @db.Uuid
+  checkoutAt     DateTime?
+  orderedAt      DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  outlet      Outlet            @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  host        User              @relation("GroupHost", fields: [hostUserId], references: [id], onDelete: Restrict)
+  order       Order?            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  members     GroupMember[]
+  items       GroupItem[]
+  settlements GroupSettlement[]
+  events      GroupEvent[]
+
+  @@index([hostUserId])
+  @@index([outletId, status])
+}
+
+model GroupMember {
+  id                String            @id @default(uuid()) @db.Uuid
+  groupId           String            @db.Uuid
+  userId            String            @db.Uuid
+  role              GroupMemberRole
+  status            GroupMemberStatus @default(ACTIVE)
+  /// PERCENTAGE split: this member's share in basis points (100 = 1%).
+  percentBps        Int?
+  /// CUSTOM split: this member's amount.
+  customAmountPaise Int?
+  joinedAt          DateTime          @default(now())
+  leftAt            DateTime?
+
+  group  GroupTray             @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  user   User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items  GroupItem[]
+  shares GroupShare[]
+  lines  GroupSettlementLine[]
+
+  @@unique([groupId, userId])
+  @@index([userId, status])
+}
+
+/// One member's quantity of one dish in the shared tray (before checkout).
+model GroupItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  groupId    String   @db.Uuid
+  memberId   String   @db.Uuid
+  menuItemId String   @db.Uuid
+  outletId   String   @db.Uuid
+  quantity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  group    GroupTray   @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  member   GroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  menuItem MenuItem    @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+
+  @@unique([memberId, menuItemId])
+  @@index([groupId])
+}
+
+enum GroupSettlementStatus {
+  /// Members are paying.
+  OPEN
+  /// Fully paid and turned into an order.
+  ORDERED
+  /// Abandoned (tray reopened or cancelled); every paid share was refunded.
+  VOID
+}
+
+/// A checkout: the prices, split and amounts frozen at that moment. Never recalculated.
+model GroupSettlement {
+  id              String                @id @default(uuid()) @db.Uuid
+  groupId         String                @db.Uuid
+  version         Int
+  status          GroupSettlementStatus @default(OPEN)
+  mode            AllocationMode
+  /// The split inputs used (percentages / custom amounts) and the member order.
+  inputs          Json
+  subtotalPaise   Int
+  totalPaise      Int
+  createdByUserId String                @db.Uuid
+  voidReason      String?
+  voidedAt        DateTime?
+  createdAt       DateTime              @default(now())
+
+  group     GroupTray             @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  createdBy User                  @relation("GroupSettlementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  lines     GroupSettlementLine[]
+  shares    GroupShare[]
+
+  @@unique([groupId, version])
+}
+
+model GroupSettlementLine {
+  id             String @id @default(uuid()) @db.Uuid
+  settlementId   String @db.Uuid
+  memberId       String @db.Uuid
+  menuItemId     String @db.Uuid
+  name           String
+  unitPricePaise Int
+  quantity       Int
+  lineTotalPaise Int
+
+  settlement GroupSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  member     GroupMember     @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@unique([settlementId, memberId, menuItemId])
+}
+
+enum ShareStatus {
+  /// Allocated ₹0: nothing to pay.
+  NOTHING_DUE
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+/// What one member owes CampusCart for a checkout, and what they actually paid.
+model GroupShare {
+  id                   String      @id @default(uuid()) @db.Uuid
+  settlementId         String      @db.Uuid
+  memberId             String      @db.Uuid
+  userId               String      @db.Uuid
+  amountDuePaise       Int
+  /// By-dish part of the amount (their own food), for transparency.
+  ownItemsPaise        Int
+  amountPaidPaise      Int         @default(0)
+  status               ShareStatus
+  paymentTransactionId String?     @unique @db.Uuid
+  refundTransactionId  String?     @unique @db.Uuid
+  paidAt               DateTime?
+  refundedAt           DateTime?
+
+  settlement         GroupSettlement    @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  member             GroupMember        @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  user               User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  paymentTransaction WalletTransaction? @relation("GroupSharePayment", fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+  refundTransaction  WalletTransaction? @relation("GroupShareRefund", fields: [refundTransactionId], references: [id], onDelete: Restrict)
+
+  @@unique([settlementId, memberId])
+  @@index([userId])
+}
+
+/// Append-only history of everything that happened to a group (who, what, when).
+model GroupEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  groupId     String   @db.Uuid
+  kind        String
+  actorUserId String?  @db.Uuid
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  group GroupTray @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  actor User?     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([groupId, createdAt])
+}
+
+/// A manager's banquet rules for one outlet.
+model BanquetSettings {
+  outletId            String   @id @db.Uuid
+  enabled             Boolean  @default(false)
+  maxGuests           Int      @default(40)
+  minNoticeDays       Int      @default(2)
+  /// Events that may overlap in time at this outlet.
+  maxConcurrentEvents Int      @default(1)
+  updatedByUserId     String?  @db.Uuid
+  updatedAt           DateTime @updatedAt
+
+  outlet    Outlet @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  updatedBy User?  @relation("BanquetSettingsUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+}
+
+enum BanquetEventType {
+  PROJECT_LUNCH
+  BIRTHDAY
+  CLUB_EVENT
+  ACADEMIC_EVENT
+  OTHER
+}
+
+enum BanquetStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+/// A catering request. Prices are a snapshot estimate; nothing is charged at booking.
+model BanquetBooking {
+  id                  String           @id @default(uuid()) @db.Uuid
+  outletId            String           @db.Uuid
+  hostUserId          String           @db.Uuid
+  name                String
+  eventType           BanquetEventType
+  startsAt            DateTime
+  endsAt              DateTime
+  guestCount          Int
+  dietaryNotes        String           @default("")
+  instructions        String           @default("")
+  contactPhone        String?
+  status              BanquetStatus    @default(PENDING_CONFIRMATION)
+  estimatedTotalPaise Int
+  perGuestPaise       Int
+  /// Secret for the event pass; only the host sees it.
+  passToken           String           @unique
+  decisionReason      String?
+  decidedByUserId     String?          @db.Uuid
+  decidedAt           DateTime?
+  cancelledAt         DateTime?
+  completedAt         DateTime?
+  version             Int              @default(1)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  outlet    Outlet                 @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  host      User                   @relation("BanquetHost", fields: [hostUserId], references: [id], onDelete: Restrict)
+  decidedBy User?                  @relation("BanquetDecidedBy", fields: [decidedByUserId], references: [id], onDelete: Restrict)
+  items     BanquetBookingItem[]
+  history   BanquetStatusHistory[]
+
+  @@index([outletId, startsAt])
+  @@index([hostUserId, startsAt])
+}
+
+model BanquetBookingItem {
+  id             String @id @default(uuid()) @db.Uuid
+  bookingId      String @db.Uuid
+  menuItemId     String @db.Uuid
+  outletId       String @db.Uuid
+  name           String
+  unitPricePaise Int
+  quantity       Int
+  lineTotalPaise Int
+
+  booking  BanquetBooking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  menuItem MenuItem       @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+
+  @@unique([bookingId, menuItemId])
+}
+
+model BanquetStatusHistory {
+  id          String         @id @default(uuid()) @db.Uuid
+  bookingId   String         @db.Uuid
+  fromStatus  BanquetStatus?
+  toStatus    BanquetStatus
+  actorUserId String         @db.Uuid
+  actorRole   Role
+  reason      String?
+  createdAt   DateTime       @default(now())
+
+  booking BanquetBooking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  actor   User           @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId, createdAt])
+}
+
+enum PeerSplitMethod {
+  EQUAL
+  PERCENTAGE
+  CUSTOM
+}
+
+enum PeerSplitStatus {
+  OPEN
+  SETTLED
+  CANCELLED
+}
+
+enum PeerParticipantStatus {
+  /// The person who paid the expense: owes nothing.
+  OWNER
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  /// The split was cancelled; anything paid was reversed.
+  CANCELLED
+}
+
+/// A shared expense paid by its owner, which the other participants repay through their wallets.
+model PeerSplit {
+  id           String          @id @default(uuid()) @db.Uuid
+  ownerUserId  String          @db.Uuid
+  title        String
+  description  String          @default("")
+  totalPaise   Int
+  currency     String          @default("INR")
+  expenseDate  DateTime        @db.Date
+  dueDate      DateTime?       @db.Date
+  method       PeerSplitMethod
+  status       PeerSplitStatus @default(OPEN)
+  version      Int             @default(1)
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  owner        User                   @relation("PeerSplitOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  participants PeerSplitParticipant[]
+  settlements  PeerSplitSettlement[]
+
+  @@index([ownerUserId, createdAt])
+}
+
+model PeerSplitParticipant {
+  id                String                @id @default(uuid()) @db.Uuid
+  splitId           String                @db.Uuid
+  userId            String                @db.Uuid
+  /// Display and rounding order (owner first, then as entered).
+  position          Int                   @default(0)
+  percentBps        Int?
+  customAmountPaise Int?
+  amountDuePaise    Int
+  amountPaidPaise   Int                   @default(0)
+  status            PeerParticipantStatus
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  split       PeerSplit             @relation(fields: [splitId], references: [id], onDelete: Restrict)
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  settlements PeerSplitSettlement[]
+
+  @@unique([splitId, userId])
+  @@index([userId])
+}
+
+enum PeerSettlementStatus {
+  COMPLETED
+  /// Sent back when the split was cancelled.
+  REVERSED
+}
+
+/// One wallet-to-wallet repayment: a debit from the payer and a credit to the owner.
+model PeerSplitSettlement {
+  id                          String               @id @default(uuid()) @db.Uuid
+  splitId                     String               @db.Uuid
+  participantId               String               @db.Uuid
+  payerUserId                 String               @db.Uuid
+  recipientUserId             String               @db.Uuid
+  amountPaise                 Int
+  idempotencyKey              String               @unique
+  debitTransactionId          String               @unique @db.Uuid
+  creditTransactionId         String               @unique @db.Uuid
+  status                      PeerSettlementStatus @default(COMPLETED)
+  reversalDebitTransactionId  String?              @unique @db.Uuid
+  reversalCreditTransactionId String?              @unique @db.Uuid
+  reversedAt                  DateTime?
+  createdAt                   DateTime             @default(now())
+
+  split             PeerSplit            @relation(fields: [splitId], references: [id], onDelete: Restrict)
+  participant       PeerSplitParticipant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  payer             User                 @relation("PeerSettlementPayer", fields: [payerUserId], references: [id], onDelete: Restrict)
+  recipient         User                 @relation("PeerSettlementRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  debitTransaction  WalletTransaction    @relation("PeerSettlementDebit", fields: [debitTransactionId], references: [id], onDelete: Restrict)
+  creditTransaction WalletTransaction    @relation("PeerSettlementCredit", fields: [creditTransactionId], references: [id], onDelete: Restrict)
+  reversalDebit     WalletTransaction?   @relation("PeerSettlementReversalDebit", fields: [reversalDebitTransactionId], references: [id], onDelete: Restrict)
+  reversalCredit    WalletTransaction?   @relation("PeerSettlementReversalCredit", fields: [reversalCreditTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([splitId])
+  @@index([payerUserId, createdAt])
+}
+
+// ─── Food ratings & reviews ─────────────────────────────────────────────────
+
+/// Published reviews count towards an item's rating as soon as they are written (post-moderation).
+/// A manager of the item's outlet can hide one (e.g. after reports); hidden reviews are excluded
+/// from public lists and every rating summary until restored.
+enum FoodReviewStatus {
+  PUBLISHED
+  HIDDEN
+}
+
+/// Optional structured feedback on one aspect of the dish (taste, portion, freshness, value).
+enum FeedbackLevel {
+  POOR
+  OKAY
+  GREAT
+}
+
+enum FoodReviewReportReason {
+  OFFENSIVE
+  SPAM
+  NOT_ABOUT_FOOD
+  PERSONAL_INFO
+  OTHER
+}
+
+/// One review per student per menu item (edits update it in place). Only students with a
+/// COMPLETED, PAID order containing the item can write one — checked on the server at write time.
+/// Rating summaries are always calculated from these rows; no average is stored.
+model FoodReview {
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           String           @db.Uuid
+  menuItemId       String           @db.Uuid
+  /// Denormalised from the menu item (composite FK below), so outlet analytics stay simple and
+  /// a review can never point at an item from another outlet.
+  outletId         String           @db.Uuid
+  /// The most recent qualifying order found when the review was last written.
+  orderId          String           @db.Uuid
+  /// Database CHECK: 1–5.
+  rating           Int
+  /// Optional. Database CHECK: at most 1000 characters.
+  body             String?
+  taste            FeedbackLevel?
+  portion          FeedbackLevel?
+  freshness        FeedbackLevel?
+  value            FeedbackLevel?
+  /// Set by the server from the eligibility check, never from the client.
+  verifiedPurchase Boolean          @default(true)
+  status           FoodReviewStatus @default(PUBLISHED)
+  moderatedById    String?          @db.Uuid
+  moderatedAt      DateTime?
+  moderationReason String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  menuItem    MenuItem           @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+  outlet      Outlet             @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  order       Order              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  moderatedBy User?              @relation("FoodReviewModeratedBy", fields: [moderatedById], references: [id], onDelete: Restrict)
+  reports     FoodReviewReport[]
+
+  @@unique([userId, menuItemId])
+  @@index([menuItemId, status, createdAt])
+  @@index([outletId, status, createdAt])
+  @@index([userId, updatedAt])
+}
+
+/// A student flagging a review for the outlet's manager. One report per student per review.
+model FoodReviewReport {
+  id         String                 @id @default(uuid()) @db.Uuid
+  reviewId   String                 @db.Uuid
+  userId     String                 @db.Uuid
+  reason     FoodReviewReportReason
+  note       String?
+  /// Set when a manager hides or keeps the review.
+  resolvedAt DateTime?
+  createdAt  DateTime               @default(now())
+
+  review FoodReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([reviewId, userId])
+  @@index([reviewId, resolvedAt])
+}
+
+// ─── Quick reorder & saved meal combos ───────────────────────────────────────
+
+/// A student's own named combo for one-tap reordering: menu item references and quantities only.
+/// Prices are never stored — they are read live from the menu whenever the combo is shown or used.
+model SavedMealCombo {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  outletId  String   @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  outlet        Outlet               @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  items         SavedMealComboItem[]
+  reorderEvents ReorderEvent[]
+
+  /// Saving the same name twice (e.g. a retried request) can't create a duplicate.
+  @@unique([userId, name])
+  /// Lets items reference (comboId, outletId) so every dish comes from the combo's outlet.
+  @@unique([id, outletId])
+  @@index([userId, updatedAt])
+}
+
+model SavedMealComboItem {
+  id         String @id @default(uuid()) @db.Uuid
+  comboId    String @db.Uuid
+  menuItemId String @db.Uuid
+  outletId   String @db.Uuid
+  /// Database CHECK: 1–10 (the cart's per-item limit).
+  quantity   Int
+
+  combo    SavedMealCombo @relation(fields: [comboId, outletId], references: [id, outletId], onDelete: Cascade)
+  menuItem MenuItem       @relation(fields: [menuItemId, outletId], references: [id, outletId], onDelete: Restrict)
+
+  @@unique([comboId, menuItemId])
+  @@index([menuItemId])
+}
+
+enum ReorderSource {
+  /// A previous order (Quick Reorder or the order page).
+  ORDER
+  SAVED_COMBO
+  /// A combo suggested from the student's own order history.
+  SUGGESTED_COMBO
+  /// A popular-on-campus fallback suggestion (aggregate data).
+  POPULAR
+}
+
+/// One reorder that put dishes in the cart (analytics). Not an order: checkout still decides
+/// that. Unique per (user, idempotency key), so a retried request is recorded once.
+model ReorderEvent {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @db.Uuid
+  source         ReorderSource
+  orderId        String?       @db.Uuid
+  savedComboId   String?       @db.Uuid
+  outletId       String        @db.Uuid
+  itemCount      Int
+  /// The current-price total of what was added (paise).
+  totalPaise     Int
+  idempotencyKey String
+  createdAt      DateTime      @default(now())
+
+  user       User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order      Order?          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  savedCombo SavedMealCombo? @relation(fields: [savedComboId], references: [id], onDelete: SetNull)
+  outlet     Outlet          @relation(fields: [outletId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([outletId, createdAt])
+}
+
+// ─── Secure pickup verification ──────────────────────────────────────────────
+
+enum PickupCredentialStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+  REVOKED
+}
+
+enum PickupMethod {
+  QR
+  CODE
+}
+
+/// What one pickup-verification attempt came to. Codes and tokens are never recorded.
+enum PickupAttemptOutcome {
+  VERIFIED
+  /// No active credential matches at this outlet (wrong, mistyped or another outlet's code).
+  NO_MATCH
+  EXPIRED
+  ALREADY_COLLECTED
+  /// The staff member or outlet is in a cooldown after too many failures.
+  LOCKED
+}
+
+/// The secret a student shows at the counter: a QR token and a short numeric code, issued when
+/// the order becomes READY. Only keyed hashes (for lookup) and an encrypted copy (so the owner can
+/// see it again) are stored — never the plain code or token.
+model PickupCredential {
+  id            String                 @id @default(uuid()) @db.Uuid
+  orderId       String                 @db.Uuid
+  outletId      String                 @db.Uuid
+  /// HMAC-SHA256 of the numeric code (server key). Unique per outlet among ACTIVE credentials
+  /// (partial unique index in the migration).
+  codeHash      String
+  /// HMAC-SHA256 of the 256-bit QR token. Globally unique.
+  tokenHash     String                 @unique
+  /// AES-256-GCM ciphertext of the code and token, readable only with the server key.
+  sealed        String
+  status        PickupCredentialStatus @default(ACTIVE)
+  expiresAt     DateTime
+  redeemedAt    DateTime?
+  redeemedById  String?                @db.Uuid
+  revokedAt     DateTime?
+  revokedReason String?
+  createdAt     DateTime               @default(now())
+
+  order         Order                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  outlet        Outlet               @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  redeemedBy    User?                @relation("PickupRedeemedBy", fields: [redeemedById], references: [id], onDelete: Restrict)
+  verifications PickupVerification[]
+  handover      OrderHandover?
+
+  @@index([orderId, status])
+  @@index([outletId, codeHash])
+}
+
+/// A successful code check by one staff member: a short-lived challenge that the explicit
+/// "Confirm handover" must present. Bound to the credential, order, outlet and staff member.
+model PickupVerification {
+  id            String       @id @default(uuid()) @db.Uuid
+  credentialId  String       @db.Uuid
+  orderId       String       @db.Uuid
+  outletId      String       @db.Uuid
+  staffUserId   String       @db.Uuid
+  method        PickupMethod
+  /// SHA-256 of the random challenge token returned to the staff device.
+  challengeHash String       @unique
+  expiresAt     DateTime
+  confirmedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  credential PickupCredential @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  outlet     Outlet           @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  staffUser  User             @relation(fields: [staffUserId], references: [id], onDelete: Restrict)
+  handover   OrderHandover?
+
+  @@index([credentialId])
+}
+
+/// The immutable record of an order being handed to the student. One per order, credential and
+/// verification (unique), so a second handover is impossible even under concurrent requests.
+model OrderHandover {
+  id             String       @id @default(uuid()) @db.Uuid
+  orderId        String       @unique @db.Uuid
+  credentialId   String       @unique @db.Uuid
+  verificationId String       @unique @db.Uuid
+  outletId       String       @db.Uuid
+  staffUserId    String       @db.Uuid
+  method         PickupMethod
+  handedOverAt   DateTime     @default(now())
+
+  order        Order              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  credential   PickupCredential   @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  verification PickupVerification @relation(fields: [verificationId], references: [id], onDelete: Restrict)
+  outlet       Outlet             @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  staffUser    User               @relation(fields: [staffUserId], references: [id], onDelete: Restrict)
+
+  @@index([outletId, handedOverAt])
+}
+
+/// Every verification attempt (for lockouts and investigation). Holds no code or token.
+model PickupVerificationAttempt {
+  id           String               @id @default(uuid()) @db.Uuid
+  outletId     String               @db.Uuid
+  staffUserId  String               @db.Uuid
+  method       PickupMethod
+  outcome      PickupAttemptOutcome
+  /// Set only when the attempt matched a credential at this outlet.
+  credentialId String?              @db.Uuid
+  createdAt    DateTime             @default(now())
+
+  outlet    Outlet @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  staffUser User   @relation(fields: [staffUserId], references: [id], onDelete: Restrict)
+
+  @@index([staffUserId, outletId, createdAt])
+  @@index([outletId, createdAt])
+}
+
+// ─── Notifications, queue estimates and auto-accept ─────────────────────────
+
+enum NotificationType {
+  ORDER_PLACED
+  ORDER_ACCEPTED
+  ORDER_PREPARING
+  ORDER_ETA_CHANGED
+  ORDER_ALMOST_READY
+  ORDER_READY
+  ORDER_COLLECTED
+  ORDER_REJECTED
+  ORDER_CANCELLED
+  ORDER_NO_SHOW
+  SCHEDULED_PICKUP_SOON
+  PICKUP_DEADLINE_SOON
+  REVIEW_PROMPT
+  STAFF_MANUAL_REVIEW
+  STAFF_ORDER_DELAYED
+  STAFF_CAPACITY_FULL
+  MANAGER_QUEUE_DELAYS
+  MANAGER_AUTO_ACCEPT_FAILURES
+  MANAGER_DELIVERY_FAILURES
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+/// The persistent inbox. Rows are written in the same transaction as the business change they
+/// describe (transactional outbox): if it rolls back, the notification never existed. A
+/// dispatcher then delivers it live (Socket.IO) and records the outcome. (userId, dedupeKey) is
+/// unique, so a repeated event can never create a second logical notification.
+model Notification {
+  id               String                     @id @default(uuid()) @db.Uuid
+  userId           String                     @db.Uuid
+  type             NotificationType
+  title            String
+  body             String
+  /// In-app path to open (e.g. /orders/<id>). Never contains a secret.
+  link             String?
+  entityType       String?
+  entityId         String?                    @db.Uuid
+  /// Staff notifications: the outlet they're about.
+  outletId         String?                    @db.Uuid
+  dedupeKey        String
+  readAt           DateTime?
+  /// IN_APP (live socket + inbox). Web Push isn't configured in this release.
+  channel          String                     @default("IN_APP")
+  deliveryStatus   NotificationDeliveryStatus @default(PENDING)
+  deliveryAttempts Int                        @default(0)
+  nextAttemptAt    DateTime?
+  deliveredAt      DateTime?
+  lastError        String?
+  createdAt        DateTime                   @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  outlet Outlet? @relation(fields: [outletId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([deliveryStatus, nextAttemptAt])
+}
+
+enum AutoAcceptMode {
+  MANUAL
+  AUTO
+}
+
+enum EstimateSource {
+  /// Learned from enough valid single-dish observations.
+  HISTORY
+  /// The manager's Configured Preparation Time.
+  CONFIGURED
+  /// Neither exists yet: the documented default.
+  DEFAULT
+}
+
+/// The learned preparation time of one dish (exponential moving average of real
+/// PREPARING → READY durations from orders containing only this dish, one unit). Kept apart
+/// from the manager's configured value, which it never overwrites.
+model PrepTimeStat {
+  menuItemId          String    @id @db.Uuid
+  outletId            String    @db.Uuid
+  emaSeconds          Float
+  observations        Int       @default(0)
+  lastDurationSeconds Int?
+  lastObservedAt      DateTime?
+  updatedAt           DateTime  @updatedAt
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+}
+
+/// Outlet-level correction learned from every collected order: actual ÷ estimated
+/// preparation time (EMA). Corrects the order-composition assumption without pretending to
+/// know per-dish times inside multi-dish orders.
+model OutletKitchenStat {
+  outletId          String   @id @db.Uuid
+  calibrationFactor Float    @default(1)
+  observations      Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  outlet Outlet @relation(fields: [outletId], references: [id], onDelete: Cascade)
+}
+
+/// The latest queue estimate for an active order (recalculated as the queue changes).
+model OrderEstimate {
+  orderId          String    @id @db.Uuid
+  outletId         String    @db.Uuid
+  /// 1 = next to be prepared; 0 = being prepared now; null once ready.
+  queuePosition    Int?
+  /// Orders that will be prepared before this one (not counting READY orders).
+  ordersAhead      Int
+  /// Estimated preparation minutes for this order (composition × calibration).
+  prepMinutes      Float
+  predictedStartAt DateTime?
+  predictedReadyAt DateTime
+  /// A range only when the outlet has enough evaluated predictions (± median error).
+  rangeMinutes     Float?
+  /// The ready time the student was last told about (for "estimate changed" notices).
+  notifiedReadyAt  DateTime?
+  etaNoticeCount   Int       @default(0)
+  version          String
+  updatedAt        DateTime  @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([outletId])
+}
+
+enum PredictionKind {
+  /// Snapshot when the order was accepted.
+  AT_ACCEPT
+  /// Snapshot when preparation started.
+  AT_PREP_START
+}
+
+/// Prediction history for evaluation (and a future supervised model): what was known at
+/// prediction time, what was predicted, and — once ready — what actually happened.
+model OrderPrediction {
+  id               String         @id @default(uuid()) @db.Uuid
+  orderId          String         @db.Uuid
+  outletId         String         @db.Uuid
+  kind             PredictionKind
+  predictedAt      DateTime       @default(now())
+  predictedReadyAt DateTime
+  version          String
+  /// Inputs known at prediction time only (queue length, slots, minutes, sources).
+  context          Json
+  actualReadyAt    DateTime?
+  absErrorSeconds  Int?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, kind])
+  @@index([outletId, predictedAt])
+}
+
+enum AutoAcceptOutcome {
+  ACCEPTED
+  MANUAL_REVIEW
+  /// Staff (or another worker) handled it first.
+  ALREADY_HANDLED
+}
+
+/// One auto-accept decision per order (unique), so retries and several workers decide once.
+model AutoAcceptDecision {
+  orderId     String            @id @db.Uuid
+  outletId    String            @db.Uuid
+  outcome     AutoAcceptOutcome
+  /// Why it went to manual review (rule codes), empty when accepted.
+  reasons     String[]
+  ruleVersion String
+  decidedAt   DateTime          @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([outletId, decidedAt])
+}

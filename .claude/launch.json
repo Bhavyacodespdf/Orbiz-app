@@ -1,0 +1,43 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "backend"],
+      "port": 4000
+    },
+    {
+      "name": "backend-staff-test",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "MANAGER_ALLOWED_EMAILS=singlahimanshi2@gmail.com,staff.dev@example.com",
+        "POS_ALLOWED_EMAILS=singlahimanshi2@gmail.com,staff.dev@example.com",
+        "npm",
+        "run",
+        "dev",
+        "-w",
+        "backend"
+      ],
+      "port": 4000
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "frontend"],
+      "port": 5173
+    },
+    {
+      "name": "backend-alt-port",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["FRONTEND_URL=http://localhost:5176", "npm", "run", "dev", "-w", "backend"],
+      "port": 4000
+    },
+    {
+      "name": "frontend-alt-port",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "frontend", "--", "--port", "5176", "--strictPort"],
+      "port": 5176
+    }
+  ]
+}

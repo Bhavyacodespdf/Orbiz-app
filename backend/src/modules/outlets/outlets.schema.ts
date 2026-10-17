@@ -1,0 +1,120 @@
+import { z } from 'zod';
+
+export const uuidParam = z.uuid();
+
+const name = (max: number) => z.string().trim().min(1, 'Required').max(max);
+
+export const outletStatusSchema = z.enum(['OPEN', 'PAUSED', 'CLOSED']);
+export const dietarySchema = z.enum(['VEG', 'NON_VEG', 'EGG']);
+export const staffRoleSchema = z.enum(['MANAGER', 'POS']);
+
+/** ₹1 – ₹10,000, as integer paise. Floats are rejected rather than rounded. */
+export const pricePaiseSchema = z
+  .number()
+  .int('Price must be a whole number of paise')
+  .min(100, 'Minimum price is ₹1')
+  .max(1_000_000, 'Maximum price is ₹10,000');
+
+const sortOrder = z.number().int().min(0).max(10_000);
+
+/** Free-text search: trimmed, capped, empty means "no filter". */
+const searchText = z
+  .string()
+  .trim()
+  .max(60)
+  .transform((v) => (v === '' ? undefined : v))
+  .optional();
+
+export const outletListQuery = z.object({ q: searchText });
+
+/** popular | price-asc | price-desc | quick-reorder | highest-rated (docs/menu-search.md). */
+export const menuSort = z
+  .enum(['popular', 'price-asc', 'price-desc', 'quick-reorder', 'highest-rated', 'rating'])
+  // "rating" was the first name for highest-rated; still accepted.
+  .transform((v) => (v === 'rating' ? 'highest-rated' : v))
+  .optional();
+
+const yes = z
+  .enum(['true', 'false', '1', '0'])
+  .transform((v) => v === 'true' || v === '1')
+  .optional();
+
+export const menuQuery = z.object({
+  q: searchText,
+  category: uuidParam.optional(),
+  dietary: dietarySchema.optional(),
+  sort: menuSort,
+  /** Only dishes that can be ordered right now. */
+  inStock: yes,
+});
+
+/** GET /menu — the campus-wide menu, paged. */
+export const campusMenuQuery = menuQuery.extend({
+  outletId: uuidParam.optional(),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(24),
+});
+
+export const outletStatusBody = z.object({ status: outletStatusSchema }).strict();
+
+export const createCategoryBody = z
+  .object({ name: name(40), sortOrder: sortOrder.optional() })
+  .strict();
+
+export const updateCategoryBody = z
+  .object({ name: name(40), sortOrder, isActive: z.boolean() })
+  .partial()
+  .strict();
+
+export const createItemBody = z
+  .object({
+    categoryId: uuidParam,
+    name: name(80),
+    description: z.string().trim().max(300).default(''),
+    pricePaise: pricePaiseSchema,
+    dietary: dietarySchema.nullable().optional(),
+    isAvailable: z.boolean().optional(),
+    /** PACKAGED or HANDMADE (no-show policy). Never inferred from the name. */
+    fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable().optional(),
+    sortOrder: sortOrder.optional(),
+  })
+  .strict();
+
+export const updateItemBody = z
+  .object({
+    categoryId: uuidParam,
+    name: name(80),
+    description: z.string().trim().max(300),
+    pricePaise: pricePaiseSchema,
+    dietary: dietarySchema.nullable(),
+    isAvailable: z.boolean(),
+    fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable(),
+    isActive: z.boolean(),
+    sortOrder,
+  })
+  .partial()
+  .strict();
+
+export const availabilityBody = z.object({ isAvailable: z.boolean() }).strict();
+
+export const createOutletBody = z
+  .object({
+    name: name(60),
+    description: z.string().trim().max(300).default(''),
+    location: z.string().trim().max(120).default(''),
+    status: outletStatusSchema.optional(),
+  })
+  .strict();
+
+export const updateOutletBody = z
+  .object({
+    name: name(60),
+    description: z.string().trim().max(300),
+    location: z.string().trim().max(120),
+    status: outletStatusSchema,
+    isActive: z.boolean(),
+  })
+  .partial()
+  .strict();
+
+export const assignStaffBody = z.object({ email: z.email(), role: staffRoleSchema }).strict();

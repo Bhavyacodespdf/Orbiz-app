@@ -1,0 +1,30 @@
+# Repository-wide ignores. backend/ and frontend/ have their own .gitignore for build output.
+
+# Dependencies
+node_modules/
+
+# Build output and caches
+dist/
+coverage/
+*.tsbuildinfo
+.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files hold secrets — only the .example files are committed
+.env
+.env.*
+!.env.example
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Personal Claude Code settings (the shared .claude/launch.json is committed)
+.claude/settings.local.json
