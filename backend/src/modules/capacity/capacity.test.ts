@@ -165,9 +165,21 @@ describe('lifecycle and scheduled orders', () => {
     return staff;
   }
 
+  /**
+   * Every bookable slot the outlet offers, in order, across all the days it returns.
+   * Reading days[0] directly is not safe: slot times follow a fixed IST clock (see
+   * scheduling.rules.ts), and the API still returns today once its last slot has passed,
+   * so late in the IST evening the first day holds a single slot — or none at all.
+   */
+  async function bookableSlots(agent: Agent): Promise<string[]> {
+    const { body } = await agent.get(`/api/v1/outlets/${m.outlet.slug}/slots`).expect(200);
+    const days = body.days as { slots: { startsAt: string; available: boolean }[] }[];
+    return days.flatMap((day) => day.slots.filter((s) => s.available).map((s) => s.startsAt));
+  }
+
   async function scheduledOrder(agent: Agent, status: number) {
-    const { body: slots } = await agent.get(`/api/v1/outlets/${m.outlet.slug}/slots`).expect(200);
-    const scheduledFor = slots.days[0].slots[0].startsAt as string;
+    const [scheduledFor] = await bookableSlots(agent);
+    expect(scheduledFor).toBeDefined();
     await addToCart(agent, m.chai.id);
     return post(
       agent,
@@ -197,10 +209,11 @@ describe('lifecycle and scheduled orders', () => {
     n += 1;
     const agent = await student(`life${n}@example.com`);
     const { body } = await scheduledOrder(agent, 201);
-    const { body: slots } = await agent.get(`/api/v1/outlets/${m.outlet.slug}/slots`).expect(200);
-    await post(agent, `/orders/${body.order.id}/reschedule`, {
-      scheduledFor: slots.days[0].slots[1].startsAt,
-    }).expect(200);
+    const [, laterSlot] = await bookableSlots(agent);
+    expect(laterSlot).toBeDefined();
+    await post(agent, `/orders/${body.order.id}/reschedule`, { scheduledFor: laterSlot }).expect(
+      200,
+    );
     await prisma.order.update({
       where: { id: body.order.id },
       data: { scheduledFor: new Date(Date.now() + 5 * 60_000) },
