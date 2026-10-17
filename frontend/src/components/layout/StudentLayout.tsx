@@ -39,7 +39,9 @@ function CartLink() {
   return (
     <NavLink
       to="/cart"
-      aria-label={count > 0 ? `Cart, ${count} ${count === 1 ? 'item' : 'items'}` : 'Cart'}
+      // No comma: WCAG 2.5.3 (Label in Name) wants the visible text — "Cart" plus the
+      // count badge — to appear inside the accessible name.
+      aria-label={count > 0 ? `Cart ${count} ${count === 1 ? 'item' : 'items'}` : 'Cart'}
       className={({ isActive }) =>
         cn(
           'inline-flex h-10 items-center gap-2 rounded-full px-4 font-semibold transition-colors',
@@ -50,7 +52,9 @@ function CartLink() {
       }
     >
       <ShoppingBag className="size-4" aria-hidden />
-      Cart
+      {/* The space is real text, not the flex gap: it puts "Cart 1" in the DOM, which is
+          what WCAG 2.5.3 compares against the accessible name. Flex collapses it visually. */}
+      Cart{' '}
       {count > 0 && (
         <span className="tabular grid min-w-5 place-items-center rounded-full bg-mustard-500 px-1.5 text-xs font-bold text-espresso-900">
           {count}

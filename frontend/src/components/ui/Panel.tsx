@@ -6,7 +6,7 @@ export function Panel({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        'rounded-(--radius-panel) border border-espresso-100 bg-cream-50 shadow-lift',
+        'rounded-(--radius-panel) border border-line bg-surface-raised shadow-lift',
         className,
       )}
       {...rest}

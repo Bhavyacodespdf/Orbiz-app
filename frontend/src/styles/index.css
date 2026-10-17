@@ -57,6 +57,41 @@
   --color-plum-600: #6a3d9a;
   --color-plum-700: #55307d;
 
+  /*
+   * Semantic layer. Components should reach for these, not the hues above: a token
+   * says what a colour is FOR, so the palette can change in one place. Every value
+   * here is currently identical to the hue token named beside it, so introducing
+   * this layer changes nothing on screen.
+   */
+  --color-surface: #fdfbf7; /* cream-100 — page background */
+  --color-surface-raised: #fffefb; /* cream-50  — panels, cards */
+  --color-surface-sunken: #f6f0e4; /* cream-200 — the POS workspace */
+  --color-surface-inverse: #2b1e1a; /* espresso-900 — console chrome */
+
+  --color-ink: #2b1e1a; /* espresso-900 — body text */
+  --color-ink-muted: #6b5952; /* espresso-500 — secondary text */
+  --color-ink-faint: #8a766e; /* espresso-400 — decoration and borders ONLY (4.1:1) */
+  --color-ink-inverse: #fdfbf7; /* cream-100 — text on inverse surfaces */
+
+  --color-line: #e8e0dc; /* espresso-100 — hairlines */
+  --color-line-strong: #c9b9b1; /* espresso-200 — input borders */
+
+  --color-accent: #c83e2a; /* chili-500 — primary action */
+  --color-accent-hover: #a93221; /* chili-600 */
+  --color-accent-ink: #ffffff; /* text on accent (5.0:1) */
+  --color-accent-soft: #fceeeb; /* chili-50 — tinted backgrounds */
+  --color-accent-strong: #87281b; /* chili-700 — text on accent-soft */
+
+  --color-highlight: #e6a133; /* mustard-500 — selection, badges, counts */
+  --color-highlight-soft: #fdf5e6; /* mustard-50 */
+  --color-highlight-ink: #7a5410; /* mustard-800 — text on highlight-soft */
+
+  --color-positive: #2f7a4b; /* success-600 */
+  --color-positive-soft: #e9f4ec; /* success-50 */
+
+  --color-feature: #6a3d9a; /* plum-600 — Surprise Meal */
+  --color-feature-soft: #f5f0fb; /* plum-50 */
+
   --radius-control: 0.625rem;
   --radius-panel: 1rem;
 
