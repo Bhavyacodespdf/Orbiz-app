@@ -46,7 +46,10 @@ import { reorderRouter, savedCombosRouter } from './modules/reorder/reorder.rout
 import { staffPickupRouter, studentPickupRouter } from './modules/pickup/pickup.routes.js';
 import { campusMenuRouter } from './modules/menu/menu.routes.js';
 import { menuItemNutritionRouter } from './modules/menu/nutrition.routes.js';
+import { campusMapRouter } from './modules/map/map.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
+import { publicTablesRouter, staffTablesRouter } from './modules/tables/tables.routes.js';
+import { reservationsRouter, staffReservationsRouter } from './modules/tables/reservations.routes.js';
 import { kitchenRouter, trackingRouter } from './modules/kitchen/kitchen.routes.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { loadSession } from './middleware/auth.js';
@@ -120,8 +123,10 @@ export function createApp({
   api.use('/menu-items', menuItemReviewsRouter(db));
   api.use('/reviews', reviewsRouter(db));
   api.use('/outlets/:slug/slots', slotsRouter(db));
+  api.use('/outlets/:slug/tables', publicTablesRouter(db));
   api.use('/outlets/:slug', outletPollRouter(db, realtime));
   api.use('/outlets', publicOutletsRouter(db));
+  api.use('/map', campusMapRouter(db));
   api.use('/menu', campusMenuRouter(db));
   api.use('/specials', specialsRouter(db, realtime));
   api.use('/polls', votesRouter(db, realtime));
@@ -150,6 +155,9 @@ export function createApp({
   api.use('/splits', splitsRouter(db, realtime, config));
   api.use('/banquets', banquetsRouter(db, realtime));
   api.use('/staff/outlets/:outletId/banquets', staffBanquetsRouter(db, realtime));
+  api.use('/staff/outlets/:outletId/tables', staffTablesRouter(db));
+  api.use('/staff/outlets/:outletId/reservations', staffReservationsRouter(db));
+  api.use('/reservations', reservationsRouter(db));
   // The payment simulator exists only when mock mode is on — never in production.
   if (rechargeProviderFor(config)?.name === 'MOCK') {
     api.use('/payments/mock', mockPaymentsRouter(db, config, realtime));
