@@ -58,6 +58,7 @@ import {
   redeemRewardRouter,
   rewardsRouter,
 } from './modules/rewards/rewards.routes.js';
+import { myBudgetRouter, adminUserBudgetRouter } from './modules/budget/budget.routes.js';
 import { kitchenRouter, trackingRouter } from './modules/kitchen/kitchen.routes.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { loadSession } from './middleware/auth.js';
@@ -176,6 +177,8 @@ export function createApp({
   api.use('/rewards', redeemRewardRouter(db));
   api.use('/me/rewards', myRewardsRouter(db));
   api.use('/admin/rewards', adminRewardsRouter(db));
+  api.use('/me/budget', myBudgetRouter(db));
+  api.use('/admin/users/:userId/budget', adminUserBudgetRouter(db));
   // The payment simulator exists only when mock mode is on — never in production.
   if (rechargeProviderFor(config)?.name === 'MOCK') {
     api.use('/payments/mock', mockPaymentsRouter(db, config, realtime));

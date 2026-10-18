@@ -16,6 +16,7 @@ import { maxRedeemablePoints, pointsToPaise } from '../loyalty/loyalty.rules.js'
 import { orderInclude, toOrder } from './orders.serializer.js';
 import { claimOrderCapacity } from '../capacity/capacity.service.js';
 import { ORDER_CAPACITY_PER_WINDOW } from '../capacity/capacity.rules.js';
+import { monthBoundsUtc, getMonthlySpend } from '../budget/budget.service.js';
 
 export interface CheckoutInput {
   userId: string;
@@ -146,6 +147,27 @@ export async function checkout(db: Database, input: CheckoutInput) {
             totalPaise,
           },
         );
+      }
+
+      // Budget cap: if the user has a monthly limit, enforce it atomically.
+      const budget = await tx.spendingBudget.findUnique({ where: { userId } });
+      if (budget) {
+        const now = new Date();
+        const { start, end } = monthBoundsUtc(budget.timezone, now);
+        const spentPaise = await getMonthlySpend(tx, userId, start, end);
+        if (spentPaise + totalPaise > budget.limitPaise) {
+          throw new AppError(
+            409,
+            'BUDGET_EXCEEDED',
+            'This order would exceed your monthly spending budget.',
+            {
+              limitPaise: budget.limitPaise,
+              spentPaise,
+              remainingPaise: Math.max(0, budget.limitPaise - spentPaise),
+              orderTotalPaise: totalPaise,
+            },
+          );
+        }
       }
 
       // Pickup numbers count per collection day, so a scheduled order uses its slot's day.

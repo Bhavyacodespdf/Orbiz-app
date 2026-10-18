@@ -63,7 +63,9 @@ export function ordersRouter(
   config: Pick<Env, 'ORDER_CAPACITY_PER_WINDOW'>,
 ) {
   const router = Router();
-  router.use(requireRole('STUDENT'));
+  // FACULTY, STAFF, and EXECUTIVE personas carry ordering permissions alongside STUDENT.
+  // GUEST is intentionally excluded: guests may browse menus but not place orders.
+  router.use(requireRole('STUDENT', 'FACULTY', 'STAFF', 'EXECUTIVE'));
 
   router.post('/', async (req, res) => {
     const idempotencyKey = requireIdempotencyKey(req);
@@ -149,15 +151,21 @@ export function ordersRouter(
     res.json({ order: result.order });
   });
 
-  /** The student cancels their own order — allowed only while it is still PLACED. */
+  /** The user cancels their own order — allowed only while it is still PLACED. */
   router.post('/:orderId/cancel', async (req, res) => {
     const { reason } = cancelBody.parse(req.body ?? {});
     const userId = req.auth!.user.id;
+    // Pass the subset of the user's roles that are ordering personas so the
+    // transition rule table can decide who may cancel.
+    const orderingPersonas = ['STUDENT', 'FACULTY', 'STAFF', 'EXECUTIVE'] as const;
+    const actorRoles = req.auth!.user.roles.filter((r): r is typeof orderingPersonas[number] =>
+      (orderingPersonas as readonly string[]).includes(r),
+    );
     const result = await transitionOrder(db, {
       orderId: orderIdParam(req.params.orderId),
       to: 'CANCELLED',
       reason,
-      actorRoles: ['STUDENT'],
+      actorRoles: actorRoles.length > 0 ? actorRoles : ['STUDENT'],
       actorUserId: userId,
       scope: { userId },
     });

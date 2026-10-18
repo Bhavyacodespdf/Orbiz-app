@@ -187,7 +187,7 @@ describe('successful chat with grounded data', () => {
   });
 
   it('includes the groundedOn list in the response', async () => {
-    await makeOutlet({ name: 'Sunrise Café', status: 'OPEN' });
+    const outlet = await makeOutlet({ name: 'Sunrise Café', status: 'OPEN' });
     const category = await makeCategory(outlet.id, 'Food');
     await makeItem(outlet.id, category.id, { name: 'Sandwich', pricePaise: 5000 });
 

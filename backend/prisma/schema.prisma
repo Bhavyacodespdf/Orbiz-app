@@ -24,6 +24,14 @@ enum Role {
   MANAGER
   POS
   ADMIN
+  /// Campus academic personnel. Can order and view outlet analytics.
+  FACULTY
+  /// Campus non-academic staff. Can order.
+  STAFF
+  /// Senior campus leadership. Can order and view outlet analytics.
+  EXECUTIVE
+  /// External visitor with limited ordering access. Cannot manage resources.
+  GUEST
 }
 
 /// How a role was granted. ALLOWLIST grants only happen when a new account is created.
@@ -111,6 +119,7 @@ model User {
   reservations            TableReservation[]
   reservationsDecided     TableReservation[]        @relation("ReservationDecidedBy")
   rewardRedemptions       RewardRedemption[]
+  spendingBudget          SpendingBudget?
 }
 
 /// Links a sign-in provider's stable subject (Google "sub") to a user.
@@ -733,6 +742,24 @@ model CounterPayment {
 
   order      Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
   recordedBy User  @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+}
+
+// ─── Monthly spending budget ─────────────────────────────────────────────────
+
+/// Optional per-user monthly spending cap. When set, checkout refuses orders that
+/// would push net spend past the limit for the current calendar month in the user's
+/// chosen timezone. One row per user; absent = no cap.
+model SpendingBudget {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @unique @db.Uuid
+  /// Monthly cap in paise (₹1 = 100). Database CHECK >= 100.
+  limitPaise Int
+  /// IANA timezone string, default India Standard Time.
+  timezone   String   @default("Asia/Kolkata")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 }
 
 // ─── Today's Special voting ─────────────────────────────────────────────────
