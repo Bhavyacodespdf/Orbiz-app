@@ -45,6 +45,7 @@ import {
 import { reorderRouter, savedCombosRouter } from './modules/reorder/reorder.routes.js';
 import { staffPickupRouter, studentPickupRouter } from './modules/pickup/pickup.routes.js';
 import { campusMenuRouter } from './modules/menu/menu.routes.js';
+import { menuItemNutritionRouter } from './modules/menu/nutrition.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { kitchenRouter, trackingRouter } from './modules/kitchen/kitchen.routes.js';
 import { csrfProtection } from './middleware/csrf.js';
@@ -115,6 +116,7 @@ export function createApp({
   api.use('/me/profile', profileRouter(db));
   api.use('/me/reviews', myReviewsRouter(db));
   api.use('/me/notifications', notificationsRouter(db));
+  api.use('/menu-items', menuItemNutritionRouter(db));
   api.use('/menu-items', menuItemReviewsRouter(db));
   api.use('/reviews', reviewsRouter(db));
   api.use('/outlets/:slug/slots', slotsRouter(db));

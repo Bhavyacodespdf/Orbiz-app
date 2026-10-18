@@ -66,6 +66,11 @@ export const updateCategoryBody = z
   .partial()
   .strict();
 
+/** Non-negative float for nutrition values (kcal or grams). */
+const nutritionValue = z.number().min(0, 'Must be 0 or greater');
+/** Up to 20 allergen strings, each trimmed and non-empty, max 50 chars. */
+const allergensSchema = z.array(z.string().trim().min(1).max(50)).max(20);
+
 export const createItemBody = z
   .object({
     categoryId: uuidParam,
@@ -77,6 +82,11 @@ export const createItemBody = z
     /** PACKAGED or HANDMADE (no-show policy). Never inferred from the name. */
     fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable().optional(),
     sortOrder: sortOrder.optional(),
+    calories: nutritionValue.nullable().optional(),
+    protein: nutritionValue.nullable().optional(),
+    carbohydrates: nutritionValue.nullable().optional(),
+    fat: nutritionValue.nullable().optional(),
+    allergens: allergensSchema.optional(),
   })
   .strict();
 
@@ -91,6 +101,11 @@ export const updateItemBody = z
     fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable(),
     isActive: z.boolean(),
     sortOrder,
+    calories: nutritionValue.nullable(),
+    protein: nutritionValue.nullable(),
+    carbohydrates: nutritionValue.nullable(),
+    fat: nutritionValue.nullable(),
+    allergens: allergensSchema,
   })
   .partial()
   .strict();

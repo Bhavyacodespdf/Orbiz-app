@@ -42,6 +42,13 @@ export function toMenuItem(item: MenuItem) {
     /** AVAILABLE, LOW_STOCK (still orderable) or SOLD_OUT. Quantities are never shown to students. */
     stockStatus: stockStatus(item),
     imageUrl: item.imageUrl,
+    nutrition: {
+      calories: item.calories,
+      protein: item.protein,
+      carbohydrates: item.carbohydrates,
+      fat: item.fat,
+      allergens: item.allergens,
+    },
   };
 }
 

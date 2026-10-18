@@ -339,6 +339,13 @@ model MenuItem {
   isActive          Boolean          @default(true)
   imageUrl          String?
   sortOrder         Int              @default(0)
+  /// Nutrition per serving. All nullable — may be set later by a manager.
+  calories          Float?
+  protein           Float?
+  carbohydrates     Float?
+  fat               Float?
+  /// Known allergens (e.g. "GLUTEN", "DAIRY", "NUTS"). Empty when not declared.
+  allergens         String[]         @default([])
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
