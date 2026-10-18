@@ -166,15 +166,24 @@ describe('lifecycle and scheduled orders', () => {
   }
 
   /**
-   * Every bookable slot the outlet offers, in order, across all the days it returns.
-   * Reading days[0] directly is not safe: slot times follow a fixed IST clock (see
-   * scheduling.rules.ts), and the API still returns today once its last slot has passed,
-   * so late in the IST evening the first day holds a single slot — or none at all.
+   * Every bookable slot the outlet offers, in order, across all the days it returns, with a
+   * minute of margin on the lead time. Two reasons not to read days[0] directly:
+   *
+   * - Slot times follow a fixed IST clock (see scheduling.rules.ts), and the API still
+   *   returns today once its last slot has passed, so late in the IST evening the first day
+   *   holds a single slot — or none at all.
+   * - The first slot is 30–45 minutes out, and exactly `leadMinutes` out when the clock sits
+   *   on a slot boundary; the seconds this test spends placing the order would then push it
+   *   inside the lead window, and /reschedule refuses that with TOO_LATE_TO_RESCHEDULE.
    */
   async function bookableSlots(agent: Agent): Promise<string[]> {
     const { body } = await agent.get(`/api/v1/outlets/${m.outlet.slug}/slots`).expect(200);
     const days = body.days as { slots: { startsAt: string; available: boolean }[] }[];
-    return days.flatMap((day) => day.slots.filter((s) => s.available).map((s) => s.startsAt));
+    const usableFrom = Date.now() + (body.leadMinutes as number) * 60_000 + 60_000;
+    return days
+      .flatMap((day) => day.slots.filter((s) => s.available))
+      .filter((s) => Date.parse(s.startsAt) >= usableFrom)
+      .map((s) => s.startsAt);
   }
 
   async function scheduledOrder(agent: Agent, status: number) {
