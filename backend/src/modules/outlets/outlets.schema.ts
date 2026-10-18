@@ -133,3 +133,64 @@ export const updateOutletBody = z
   .strict();
 
 export const assignStaffBody = z.object({ email: z.email(), role: staffRoleSchema }).strict();
+
+// ─── Outlet intelligence ──────────────────────────────────────────────────────
+
+export const crowdLevelSchema = z.enum(['LOW', 'MODERATE', 'HIGH', 'VERY_HIGH']);
+
+const specialtyItem = z.string().trim().min(1).max(80);
+
+/** Manager updates crowd level, queue, seats, rating and signature dishes. */
+export const updateIntelligenceBody = z
+  .object({
+    crowdLevel: crowdLevelSchema.nullable(),
+    /** Estimated queue length (≥ 0). null = unknown / clear it. */
+    queueLength: z.number().int().min(0).nullable(),
+    /** Available dine-in seats (≥ 0). null = unknown / clear it. */
+    availableSeats: z.number().int().min(0).nullable(),
+    /** Manager-maintained star rating 1.0–5.0. null = clear it. */
+    outletRating: z.number().min(1).max(5).nullable(),
+    /** Up to 10 signature dish names. */
+    specialtyItems: z.array(specialtyItem).max(10),
+  })
+  .partial()
+  .strict();
+
+// ─── Map coordinates ──────────────────────────────────────────────────────────
+
+export const updateCoordinatesBody = z
+  .object({
+    /** WGS-84 latitude −90 to 90, or null to clear. */
+    latitude: z.number().min(-90).max(90).nullable(),
+    /** WGS-84 longitude −180 to 180, or null to clear. */
+    longitude: z.number().min(-180).max(180).nullable(),
+  })
+  .strict();
+
+// ─── Campus locations ─────────────────────────────────────────────────────────
+
+const locationName = (max: number) => z.string().trim().min(1, 'Required').max(max);
+const locationSlug = z.string().trim().min(1).max(80).regex(/^[a-z0-9-]+$/, 'Lowercase letters, digits and hyphens only');
+
+export const createCampusLocationBody = z
+  .object({
+    slug: locationSlug,
+    name: locationName(120),
+    category: locationName(40),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    description: z.string().trim().max(300).default(''),
+  })
+  .strict();
+
+export const updateCampusLocationBody = z
+  .object({
+    name: locationName(120),
+    category: locationName(40),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    description: z.string().trim().max(300),
+    isActive: z.boolean(),
+  })
+  .partial()
+  .strict();

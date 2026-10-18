@@ -1,4 +1,4 @@
-import type { MenuCategory, MenuItem, Outlet } from '../../generated/prisma/client.js';
+import type { CampusLocation, MenuCategory, MenuItem, Outlet } from '../../generated/prisma/client.js';
 import { inStock, stockStatus } from '../inventory/stock.js';
 
 export function toOutletSummary(outlet: Outlet) {
@@ -13,6 +13,16 @@ export function toOutletSummary(outlet: Outlet) {
     /** Only OPEN outlets accept orders (enforced again at checkout). */
     acceptingOrders: outlet.status === 'OPEN' && outlet.isActive,
     isSample: outlet.isSample,
+    // ─── Outlet intelligence (manually maintained, never auto-computed) ───────
+    crowdLevel: outlet.crowdLevel,
+    queueLength: outlet.queueLength,
+    availableSeats: outlet.availableSeats,
+    outletRating: outlet.outletRating,
+    specialtyItems: outlet.specialtyItems,
+    intelligenceUpdatedAt: outlet.intelligenceUpdatedAt?.toISOString() ?? null,
+    // ─── Map coordinates ─────────────────────────────────────────────────────
+    latitude: outlet.latitude,
+    longitude: outlet.longitude,
   };
 }
 
@@ -49,6 +59,18 @@ export function toMenuItem(item: MenuItem) {
       fat: item.fat,
       allergens: item.allergens,
     },
+  };
+}
+
+export function toCampusLocation(loc: CampusLocation) {
+  return {
+    id: loc.id,
+    slug: loc.slug,
+    name: loc.name,
+    category: loc.category,
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    description: loc.description,
   };
 }
 
