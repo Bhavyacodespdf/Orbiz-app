@@ -148,7 +148,7 @@ describe('<OrderPage />', () => {
       });
       renderRoute('/orders/ord1');
       expect(await screen.findByText(/no-show policy is being applied/)).toBeInTheDocument();
-      expect(screen.queryByText(/refunded to the CampusCart wallet/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/refunded to the Orbiz wallet/)).not.toBeInTheDocument();
     });
 
     it('shows the per-item outcome once the server has settled it', async () => {

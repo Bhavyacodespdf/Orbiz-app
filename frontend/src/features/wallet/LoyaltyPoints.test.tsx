@@ -188,9 +188,9 @@ describe('redeeming points at checkout', () => {
   it('lets points make the wallet enough for an order it couldn’t otherwise cover', async () => {
     checkoutApi({ balancePaise: 3000, points: 25, maxPoints: 25 });
     renderRoute('/checkout');
-    expect(await screen.findByRole('radio', { name: /CampusCart wallet/ })).toBeDisabled();
+    expect(await screen.findByRole('radio', { name: /Orbiz wallet/ })).toBeDisabled();
     await userEvent.type(screen.getByLabelText('Points to use'), '10');
-    expect(screen.getByRole('radio', { name: /CampusCart wallet/ })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: /Orbiz wallet/ })).toBeEnabled();
   });
 
   it('explains when points can’t be used on this order, and hides the section with no points', async () => {

@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/Button';
 
 describe('describeError', () => {
   it('explains connectivity problems in plain language', () => {
-    expect(describeError(new ApiError(0, 'NETWORK_ERROR', 'x'))).toMatch(/Cannot reach CampusCart/);
-    expect(describeError(new ApiError(502, 'HTTP_ERROR', 'x'))).toMatch(/Cannot reach CampusCart/);
+    expect(describeError(new ApiError(0, 'NETWORK_ERROR', 'x'))).toMatch(/Cannot reach Orbiz/);
+    expect(describeError(new ApiError(502, 'HTTP_ERROR', 'x'))).toMatch(/Cannot reach Orbiz/);
   });
 
   it('shows the server message for API errors and hides unknown errors', () => {

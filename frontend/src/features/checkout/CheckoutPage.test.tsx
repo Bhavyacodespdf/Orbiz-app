@@ -42,7 +42,7 @@ describe('<CheckoutPage />', () => {
   it('disables the wallet when the balance is too low and offers a top-up for the shortfall', async () => {
     setup(1500, () => ({ status: 500 }));
     renderRoute('/checkout');
-    expect(await screen.findByRole('radio', { name: /CampusCart wallet/ })).toBeDisabled();
+    expect(await screen.findByRole('radio', { name: /Orbiz wallet/ })).toBeDisabled();
     expect(screen.getByRole('radio', { name: /Pay at the counter/ })).toBeChecked();
     expect(screen.getByText(/You need/)).toHaveTextContent('₹25');
     // The shortfall is ₹25, but the smallest recharge is ₹99.
@@ -73,7 +73,7 @@ describe('<CheckoutPage />', () => {
     renderRoute('/checkout');
     const button = await screen.findByRole('button', { name: 'Place order · ₹40' });
     await userEvent.click(button);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Cannot reach CampusCart');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cannot reach Orbiz');
     await userEvent.click(screen.getByRole('button', { name: 'Place order · ₹40' }));
     await screen.findByText('N-007');
 

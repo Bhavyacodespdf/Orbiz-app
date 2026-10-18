@@ -5,7 +5,7 @@ import { walletKey } from './wallet';
 
 /*
  * Group trays. Every amount comes from the server; the browser sends quantities, the split
- * inputs the host chose, and actions. Payment goes from each member's own wallet to CampusCart.
+ * inputs the host chose, and actions. Payment goes from each member's own wallet to Orbiz.
  */
 
 export const allocationModeSchema = z.enum(['BY_DISH', 'EQUAL', 'PERCENTAGE', 'CUSTOM']);

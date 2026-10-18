@@ -1,5 +1,5 @@
 /**
- * Thin wrapper around fetch for calling the CampusCart API.
+ * Thin wrapper around fetch for calling the Orbiz API.
  *
  * - Always sends the session cookie (credentials: 'include').
  * - Sends X-Requested-With on every request; the backend will require it on
@@ -37,7 +37,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   try {
     response = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: 'include' });
   } catch {
-    throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the CampusCart server.');
+    throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the Orbiz server.');
   }
 
   const isJson = response.headers.get('content-type')?.includes('application/json');

@@ -3,7 +3,7 @@
 @import '@fontsource-variable/figtree/wght.css';
 
 /*
- * CampusCart design tokens — "Late-Night Diner".
+ * Orbiz design tokens — "Late-Night Diner".
  * Every colour, font and radius used by components comes from here, so the
  * whole look can be tuned in one place.
  *
@@ -100,6 +100,37 @@
 
   --animate-toast-in: toast-in 180ms ease-out;
   --animate-fade-in: fade-in 160ms ease-out;
+
+  /* Motion. One easing for everything that enters, a softer one for hover. */
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-rise: rise 420ms var(--ease-entrance) both;
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+
+  /* Elevation above --shadow-lift, for the hover state of something you can click. */
+  --shadow-float:
+    0 1px 1px rgb(43 30 26 / 0.04), 0 10px 20px -8px rgb(43 30 26 / 0.16),
+    0 28px 48px -28px rgb(43 30 26 / 0.3);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes toast-in {
@@ -141,10 +172,43 @@
   dialog::backdrop {
     background: rgb(43 30 26 / 0.55);
   }
+  ::selection {
+    background: var(--color-mustard-300);
+    color: var(--color-espresso-900);
+  }
+  @supports (scrollbar-width: thin) {
+    html {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-espresso-200) transparent;
+    }
+  }
 }
 
 @utility tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Paper grain. A fixed, very low-contrast noise layer stops large flat areas — the hero,
+ * outlet tiles — from reading as plastic. Pure CSS, no image request.
+ */
+@utility grain {
+  position: relative;
+}
+@utility grain-layer {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+/* Frosted chrome for anything that floats over scrolling content. */
+@utility glass {
+  /*
+   * 90%, not less: this sits over scrolling content, and at 78% a colourful page behind the
+   * phone tab bar pushed its labels under the 4.5:1 contrast minimum.
+   */
+  background-color: color-mix(in oklab, var(--color-surface) 90%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
 
 /* Receipt-style perforated bottom edge, used by order tickets. */

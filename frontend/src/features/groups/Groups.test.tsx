@@ -308,7 +308,7 @@ describe('group tray', () => {
       }),
     });
     renderRoute('/groups/tray/g1');
-    expect(await screen.findByText(/This is a payment to CampusCart/)).toBeInTheDocument();
+    expect(await screen.findByText(/This is a payment to Orbiz/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Add|One more/ })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Pay ₹35 from wallet' }));
     await waitFor(() =>

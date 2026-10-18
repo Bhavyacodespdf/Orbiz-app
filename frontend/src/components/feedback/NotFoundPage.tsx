@@ -9,7 +9,7 @@ export function NotFoundPage() {
         icon={<Compass aria-hidden />}
         title="Page not found"
         description="This page doesn't exist or has moved."
-        action={<ButtonLink to="/">Back to CampusCart</ButtonLink>}
+        action={<ButtonLink to="/">Back to Orbiz</ButtonLink>}
       />
     </main>
   );

@@ -132,8 +132,8 @@ export function NoShowOutcome({
         <p className="border-t border-dashed border-espresso-200 pt-2">
           {s.refundPaise > 0 ? (
             <>
-              <strong>{formatINR(s.refundPaise)}</strong> refunded to the CampusCart wallet
-              (simulated funds).
+              <strong>{formatINR(s.refundPaise)}</strong> refunded to the Orbiz wallet (simulated
+              funds).
             </>
           ) : (
             'No refund under the no-show policy.'

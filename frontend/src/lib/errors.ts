@@ -4,7 +4,7 @@ import { ApiError } from '@/services/http';
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === 'NETWORK_ERROR' || error.status === 502 || error.status === 504) {
-      return 'Cannot reach CampusCart right now. Check your connection and try again.';
+      return 'Cannot reach Orbiz right now. Check your connection and try again.';
     }
     return error.message;
   }

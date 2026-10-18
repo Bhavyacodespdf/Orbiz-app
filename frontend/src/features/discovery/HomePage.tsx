@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { SearchX, Store } from 'lucide-react';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchField } from '@/components/ui/SearchField';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/feedback/Skeleton';
@@ -26,30 +25,74 @@ export function HomePage() {
 
   const outlets = useOutlets(q);
 
+  // keepPreviousData holds the last results while a new search runs. Without this guard the
+  // old empty result would claim "nothing matches" before the server has answered the new one.
+  const searching = outlets.isPending || (outlets.isFetching && outlets.data?.length === 0);
+
   return (
-    <>
-      <PageHeader
-        eyebrow="Campus outlets"
-        title="Hungry? Let’s get you fed."
-        description="Browse what’s cooking across campus, order ahead, and pick up when it’s ready."
-      />
+    <div className="space-y-10 md:space-y-14">
+      <section className="grain animate-rise relative overflow-hidden rounded-[1.75rem] bg-espresso-900 px-6 pt-12 pb-20 sm:px-10 sm:pt-14 sm:pb-24">
+        {/* Two warm lamps and a paper grain, so the dark panel has depth instead of flatness. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-40 -right-20 size-[30rem] rounded-full bg-mustard-500/25 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-48 -left-32 size-[30rem] rounded-full bg-chili-500/25 blur-3xl"
+        />
+        <span
+          aria-hidden
+          className="grain-layer pointer-events-none absolute inset-0 opacity-[0.06] mix-blend-overlay"
+        />
+
+        <div className="relative grid gap-10 lg:grid-cols-[1.45fr_1fr] lg:items-center lg:gap-12">
+          <div>
+            <p className="flex items-center gap-3 text-[0.72rem] font-bold tracking-[0.24em] text-mustard-300 uppercase">
+              <span aria-hidden className="h-px w-10 bg-mustard-500/60" />
+              Campus outlets
+            </p>
+            <h1 className="mt-5 font-display text-[2.75rem] leading-[0.98] font-extrabold tracking-[-0.035em] text-balance text-cream-100 sm:text-[4.25rem]">
+              Hungry? Let’s get you fed.
+            </h1>
+            <p className="mt-5 max-w-lg text-base leading-relaxed text-pretty text-cream-100/70 sm:text-lg">
+              Browse what’s cooking across campus, order ahead, and pick up when it’s ready.
+            </p>
+          </div>
+
+          {!q && <SurpriseMealPromo />}
+        </div>
+      </section>
+
+      {/* Lifted out of the hero so it reads as the first thing you act on. */}
+      <div className="relative z-10 -mt-12 px-4 sm:px-10">
+        <SearchField
+          label="Search outlets and dishes"
+          placeholder="Search outlets or dishes — try “chai” or “roll”"
+          value={search}
+          onChange={setSearch}
+          className="h-14 max-w-2xl border-transparent shadow-float"
+        />
+      </div>
 
       {!q && <ReorderSections />}
       {!q && <TodaysSpecials />}
-      {!q && <SurpriseMealPromo />}
 
-      <SearchField
-        label="Search outlets and dishes"
-        placeholder="Search outlets or dishes — try “chai” or “roll”"
-        value={search}
-        onChange={setSearch}
-        className="mb-6 max-w-xl"
-      />
-
-      {outlets.isPending ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy>
+      {searching ? (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-busy>
           {[0, 1, 2].map((n) => (
-            <Skeleton key={n} className="h-60 rounded-(--radius-panel)" />
+            <div
+              key={n}
+              className="animate-shimmer overflow-hidden rounded-2xl border border-line bg-surface-raised"
+              style={{ animationDelay: `${n * 140}ms` }}
+            >
+              <Skeleton className="h-36 rounded-none" />
+              <div className="space-y-3 p-5">
+                <Skeleton className="h-6 w-2/3 rounded-md" />
+                <Skeleton className="h-4 w-1/2 rounded-md" />
+                <Skeleton className="h-4 w-full rounded-md" />
+              </div>
+            </div>
           ))}
         </div>
       ) : outlets.error ? (
@@ -80,19 +123,17 @@ export function HomePage() {
         )
       ) : (
         <ul
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
           aria-label="Outlets"
           aria-busy={outlets.isFetching}
         >
-          {outlets.data.map((outlet) => (
+          {outlets.data.map((outlet, index) => (
             <li key={outlet.id} className="flex">
-              <div className="flex w-full flex-col [&>a]:flex-1">
-                <OutletCard outlet={outlet} />
-              </div>
+              <OutletCard outlet={outlet} index={index} />
             </li>
           ))}
         </ul>
       )}
-    </>
+    </div>
   );
 }

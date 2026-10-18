@@ -428,7 +428,7 @@ function PlanTable({
                   <td className="p-3">{units(item.forecastUnits)}</td>
                   <td
                     className="p-3 text-espresso-500"
-                    title="CampusCart has no purchase orders yet, so nothing is recorded as on the way."
+                    title="Orbiz has no purchase orders yet, so nothing is recorded as on the way."
                   >
                     {item.expectedIncoming}
                   </td>

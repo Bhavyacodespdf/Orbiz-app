@@ -109,6 +109,15 @@ async function cancelOrder(page: Page, url: string) {
 async function settle(page: Page) {
   await page.waitForLoadState('networkidle');
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  // Entrance animations start elements at opacity 0, and axe reads whatever frame it
+  // lands on — so wait for every finite animation to finish. Infinite ones (the skeleton
+  // shimmer) are skipped, since they never would.
+  await page.waitForFunction(() =>
+    document.getAnimations().every((animation) => {
+      const timing = animation.effect?.getComputedTiming();
+      return timing?.iterations === Infinity || animation.playState === 'finished';
+    }),
+  );
 }
 
 /** Overflow and accessibility checks for whatever is on screen right now. */

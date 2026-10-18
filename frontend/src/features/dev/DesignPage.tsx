@@ -53,7 +53,7 @@ export function DesignPage() {
         <Wordmark suffix="Design system" />
         <h1 className="text-4xl font-extrabold">Late-Night Diner</h1>
         <p className="max-w-2xl text-espresso-500">
-          Development reference for CampusCart’s tokens and components. Example amounts below are
+          Development reference for Orbiz’s tokens and components. Example amounts below are
           illustrative only.
         </p>
         <SystemStatus />

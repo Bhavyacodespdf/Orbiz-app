@@ -86,9 +86,9 @@ export function StudentLayout() {
   return (
     <div className="min-h-dvh">
       <DevAccountBanner />
-      <header className="sticky top-0 z-30 border-b border-espresso-100 bg-cream-100/90 backdrop-blur">
+      <header className="glass sticky top-0 z-30 border-b border-line">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
-          <Link to="/" aria-label="CampusCart home" className="rounded-md">
+          <Link to="/" aria-label="Orbiz home" className="rounded-md">
             <Wordmark />
           </Link>
 
@@ -130,7 +130,7 @@ export function StudentLayout() {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-espresso-100 bg-cream-50/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-30 border-t border-line pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
         <ul className="mx-auto grid max-w-lg grid-cols-6">
           {studentNav.map(({ to, label, icon: Icon, end }) => (

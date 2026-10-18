@@ -424,7 +424,7 @@ function NewSplitDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       title="New split"
-      description="You paid for something shared. Everyone else repays their share from their CampusCart wallet to yours."
+      description="You paid for something shared. Everyone else repays their share from their Orbiz wallet to yours."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -513,7 +513,7 @@ function NewSplitDialog({ onClose }: { onClose: () => void }) {
         )}
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-sm font-semibold">
-            People who owe you (their CampusCart email)
+            People who owe you (their Orbiz email)
           </legend>
           {people.map((p, i) => (
             <div key={i} className="flex flex-wrap items-end gap-2">
@@ -598,7 +598,7 @@ function SettleDialog({ split, onClose }: { split: Split; onClose: () => void })
       open
       onClose={onClose}
       title={`Repay ${split.owner.displayName}`}
-      description={`You owe ${formatINR(outstanding)} for “${split.title}”. It moves from your CampusCart wallet to theirs straight away (simulated funds).`}
+      description={`You owe ${formatINR(outstanding)} for “${split.title}”. It moves from your Orbiz wallet to theirs straight away (simulated funds).`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>

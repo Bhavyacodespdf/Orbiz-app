@@ -390,7 +390,7 @@ function Summary({ g }: { g: Group }) {
         <span>{formatINR(total)}</span>
       </p>
       <p className="text-xs text-espresso-500">
-        CampusCart has no taxes, fees or group discounts, so this is what the group pays.
+        Orbiz has no taxes, fees or group discounts, so this is what the group pays.
       </p>
       <p className="mt-2 text-sm">
         Formula: <strong>{MODE_LABELS[g.settlement?.mode ?? g.allocationMode].label}</strong>
@@ -472,7 +472,7 @@ function Payment({ g }: { g: Group }) {
       {mine && mine.status === 'UNPAID' ? (
         <>
           <p className="mt-1">
-            You owe <strong>{formatINR(mine.amountDuePaise)}</strong> to CampusCart for this order
+            You owe <strong>{formatINR(mine.amountDuePaise)}</strong> to Orbiz for this order
             {mine.ownItemsPaise !== mine.amountDuePaise
               ? ` (your own items: ${formatINR(mine.ownItemsPaise)})`
               : ''}
@@ -502,8 +502,7 @@ function Payment({ g }: { g: Group }) {
         {unpaid === 0
           ? 'Everyone has paid.'
           : `${unpaid} ${unpaid === 1 ? 'person hasn’t' : 'people haven’t'} paid yet. The order is placed once everyone has.`}{' '}
-        This is a payment to CampusCart; settling up between friends afterwards is separate (use
-        Splits).
+        This is a payment to Orbiz; settling up between friends afterwards is separate (use Splits).
       </p>
       {pay.error ? (
         <p role="alert" className="mt-2 text-sm text-chili-700">

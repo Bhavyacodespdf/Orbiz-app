@@ -435,7 +435,7 @@ export function WalletPage() {
   return (
     <>
       <PageHeader
-        eyebrow="CampusCart wallet"
+        eyebrow="Orbiz wallet"
         title="Wallet"
         description="Top up once, then pay for orders in a tap."
       />

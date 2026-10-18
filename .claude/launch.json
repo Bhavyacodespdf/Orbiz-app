@@ -43,7 +43,7 @@
       "name": "backend-preview-content",
       "runtimeExecutable": "env",
       "runtimeArgs": [
-        "DATABASE_URL=postgresql://eklavya@localhost:5432/campuscart_e2e",
+        "DATABASE_URL=postgresql://eklavya@localhost:5432/campuscart_dev",
         "PORT=4102",
         "FRONTEND_URL=http://localhost:5176",
         "BACKEND_URL=http://localhost:4102",

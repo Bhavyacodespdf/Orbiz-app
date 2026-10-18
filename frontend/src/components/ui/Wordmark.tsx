@@ -19,7 +19,7 @@ export function Wordmark({
       )}
     >
       <span>
-        Campus<span className={tone === 'dark' ? 'text-chili-500' : 'text-chili-400'}>Cart</span>
+        Or<span className={tone === 'dark' ? 'text-chili-500' : 'text-chili-400'}>biz</span>
         <span className="text-mustard-500">.</span>
       </span>
       {suffix && (

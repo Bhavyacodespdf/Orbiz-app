@@ -315,7 +315,7 @@ export function CheckoutPage() {
               disabled={!walletEnough}
               onSelect={setMethod}
               icon={<WalletMinimal className="size-5" aria-hidden />}
-              title="CampusCart wallet"
+              title="Orbiz wallet"
             >
               Balance{' '}
               <span className="tabular font-semibold text-espresso-900">{formatINR(balance)}</span>{' '}

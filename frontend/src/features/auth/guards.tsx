@@ -26,8 +26,8 @@ export function AccessDenied({ title = 'You don’t have access to this page' }:
       <EmptyState
         icon={<ShieldX aria-hidden />}
         title={title}
-        description="Your account doesn’t have the role this area needs. If you think it should, ask the CampusCart administrator."
-        action={<ButtonLink to="/">Back to CampusCart</ButtonLink>}
+        description="Your account doesn’t have the role this area needs. If you think it should, ask the Orbiz administrator."
+        action={<ButtonLink to="/">Back to Orbiz</ButtonLink>}
       />
     </main>
   );

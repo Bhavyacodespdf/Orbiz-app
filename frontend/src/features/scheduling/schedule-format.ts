@@ -1,4 +1,4 @@
-/** Scheduled orders follow CampusCart's calendar policy: India Standard Time. */
+/** Scheduled orders follow Orbiz's calendar policy: India Standard Time. */
 const IST = 'Asia/Kolkata';
 
 const full = new Intl.DateTimeFormat('en-IN', {

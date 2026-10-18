@@ -101,7 +101,7 @@ describe('<LoginPage />', () => {
           body: {
             error: {
               code: 'EMAIL_CONFLICT',
-              message: 'Another CampusCart account already uses this email address.',
+              message: 'Another Orbiz account already uses this email address.',
             },
           },
         }),

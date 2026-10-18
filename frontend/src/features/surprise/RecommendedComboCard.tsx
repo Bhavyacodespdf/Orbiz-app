@@ -136,7 +136,7 @@ export function RecommendedComboCard({
         <p className="text-xs text-espresso-500">
           {combo.source === 'AI'
             ? 'Suggested by an AI model, then checked against the live menu, prices and your filters.'
-            : 'Picked by CampusCart’s recommendation rules from the live menu (no AI model is connected).'}
+            : 'Picked by Orbiz’s recommendation rules from the live menu (no AI model is connected).'}
         </p>
       </div>
     </section>
