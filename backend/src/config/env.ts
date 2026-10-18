@@ -110,6 +110,12 @@ const envSchema = z
     PAYMENT_MOCK_ENABLED: booleanFromString,
     DEV_LOGIN_ENABLED: booleanFromString,
 
+    // ─── BiteBot AI chat (optional — degrades gracefully when not set) ────────
+    /** Anthropic API key. Set to enable BiteBot. Never sent to the browser. */
+    ANTHROPIC_API_KEY: z.string().optional(),
+    /** Max BiteBot chat requests per signed-in user per minute. */
+    BITEBOT_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(10),
+
     // ₹99 is also enforced in code as a floor (loyalty.rules.ts); this can only raise it.
     WALLET_RECHARGE_MIN_PAISE: z.coerce.number().int().positive().default(9_900),
     WALLET_RECHARGE_MAX_PAISE: z.coerce.number().int().positive().default(200_000),

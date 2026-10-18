@@ -110,6 +110,7 @@ model User {
   notifications           Notification[]
   reservations            TableReservation[]
   reservationsDecided     TableReservation[]        @relation("ReservationDecidedBy")
+  rewardRedemptions       RewardRedemption[]
 }
 
 /// Links a sign-in provider's stable subject (Google "sub") to a user.
@@ -840,6 +841,8 @@ enum LoyaltyTransactionType {
   REDEEMED_ORDER
   /// Given back when that order was rejected or cancelled.
   RESTORED_ORDER
+  /// Spent to claim a reward from the catalog.
+  REDEEMED_REWARD
 }
 
 /// The points ledger. Rows are never modified; every change to Wallet.pointsBalance has one.
@@ -863,11 +866,12 @@ model LoyaltyTransaction {
   isSimulated        Boolean
   createdAt          DateTime               @default(now())
 
-  wallet         Wallet              @relation(fields: [walletId], references: [id], onDelete: Restrict)
-  paymentAttempt PaymentAttempt?     @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
-  order          Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  reverses       LoyaltyTransaction? @relation("LoyaltyReversal", fields: [reversesId], references: [id], onDelete: Restrict)
-  reversedBy     LoyaltyTransaction? @relation("LoyaltyReversal")
+  wallet           Wallet              @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  paymentAttempt   PaymentAttempt?     @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  order            Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  reverses         LoyaltyTransaction? @relation("LoyaltyReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy       LoyaltyTransaction? @relation("LoyaltyReversal")
+  rewardRedemption RewardRedemption?
 
   /// At most one redemption and one restoration per order.
   @@unique([orderId, type])
@@ -2318,4 +2322,56 @@ model CampusLocation {
   updatedAt   DateTime @updatedAt
 
   @@index([isActive])
+}
+
+// ─── Rewards catalog and vouchers ────────────────────────────────────────────
+
+/// An item in the rewards catalog that students can claim with loyalty points.
+model RewardCatalog {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  description   String    @default("")
+  /// How many loyalty points the reward costs. Database CHECK >= 1.
+  pointCost     Int
+  isActive      Boolean   @default(true)
+  /// Optional short prefix used when generating voucher codes (e.g. "ORBIZ" → "ORBIZ-X3K7M2P9").
+  /// Null means no voucher code is issued — the redemption record is the proof.
+  voucherPrefix String?
+  /// Maximum total claims. null = unlimited. Database CHECK >= 1 when set.
+  totalStock    Int?
+  /// Running count of claims made (never decremented). Database CHECK >= 0.
+  redeemedCount Int       @default(0)
+  /// Redemption window. null = always available.
+  validFrom     DateTime?
+  validUntil    DateTime?
+  /// True only for rows created by the development seed script.
+  isSample      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  redemptions RewardRedemption[]
+
+  @@index([isActive, validFrom, validUntil])
+}
+
+/// One student's claim of a reward from the catalog.
+/// A matching LoyaltyTransaction row records the points deducted atomically.
+model RewardRedemption {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @db.Uuid
+  rewardId      String        @db.Uuid
+  /// The points-deduct entry in the loyalty ledger. Unique: one redemption, one deduction.
+  loyaltyTxId   String        @unique @db.Uuid
+  /// Generated voucher code. Unique across all redemptions. null when the reward has no voucherPrefix.
+  voucherCode   String?       @unique
+  /// Set when the student presents the voucher. null = not yet used.
+  redeemedAt    DateTime?
+  createdAt     DateTime      @default(now())
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  reward    RewardCatalog     @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  loyaltyTx LoyaltyTransaction @relation(fields: [loyaltyTxId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([rewardId, createdAt])
 }
