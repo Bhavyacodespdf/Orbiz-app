@@ -59,6 +59,12 @@ import {
   rewardsRouter,
 } from './modules/rewards/rewards.routes.js';
 import { myBudgetRouter, adminUserBudgetRouter } from './modules/budget/budget.routes.js';
+import { studentInvoiceRouter, adminInvoiceRouter } from './modules/invoice/invoice.routes.js';
+import {
+  orderRefundRouter,
+  adminRefundRouter,
+  staffRefundRouter,
+} from './modules/refunds/refund.routes.js';
 import { kitchenRouter, trackingRouter } from './modules/kitchen/kitchen.routes.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { loadSession } from './middleware/auth.js';
@@ -179,6 +185,11 @@ export function createApp({
   api.use('/admin/rewards', adminRewardsRouter(db));
   api.use('/me/budget', myBudgetRouter(db));
   api.use('/admin/users/:userId/budget', adminUserBudgetRouter(db));
+  api.use('/orders/:orderId/invoice', studentInvoiceRouter(db));
+  api.use('/admin/orders/:orderId/invoice', adminInvoiceRouter(db));
+  api.use('/orders/:orderId/refund-request', orderRefundRouter(db));
+  api.use('/admin/refund-requests', adminRefundRouter(db));
+  api.use('/staff/outlets/:outletId/refund-requests', staffRefundRouter(db));
   // The payment simulator exists only when mock mode is on — never in production.
   if (rechargeProviderFor(config)?.name === 'MOCK') {
     api.use('/payments/mock', mockPaymentsRouter(db, config, realtime));

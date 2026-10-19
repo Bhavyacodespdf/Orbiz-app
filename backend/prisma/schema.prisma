@@ -120,6 +120,8 @@ model User {
   reservationsDecided     TableReservation[]        @relation("ReservationDecidedBy")
   rewardRedemptions       RewardRedemption[]
   spendingBudget          SpendingBudget?
+  refundRequests          RefundRequest[] @relation("RefundRequests")
+  refundDecisions         RefundRequest[] @relation("RefundDecisions")
 }
 
 /// Links a sign-in provider's stable subject (Google "sub") to a user.
@@ -547,6 +549,7 @@ model Order {
   estimate           OrderEstimate?
   predictions        OrderPrediction[]
   autoAcceptDecision AutoAcceptDecision?
+  refundRequests     RefundRequest[]
 
   @@unique([userId, idempotencyKey])
   @@unique([outletId, pickupDay, pickupNumber])
@@ -2401,4 +2404,44 @@ model RewardRedemption {
 
   @@index([userId, createdAt])
   @@index([rewardId, createdAt])
+}
+
+// ─── Refund Request Desk ──────────────────────────────────────────────────────
+
+enum RefundRequestStatus {
+  /// Student submitted; awaiting manager/admin decision.
+  PENDING
+  /// Manager or admin approved; money has NOT yet been returned.
+  APPROVED
+  /// Manager or admin rejected the request.
+  REJECTED
+  /// Refund confirmed processed. For wallet orders the wallet has been credited;
+  /// for counter orders the cash was returned offline.
+  PROCESSED
+}
+
+/// A student's manual request for a refund outside the automatic cancel/reject flow.
+/// The automatic wallet refund on cancellation is NOT replaced by this model.
+model RefundRequest {
+  id                 String              @id @default(uuid()) @db.Uuid
+  orderId            String              @db.Uuid
+  requestedByUserId  String              @db.Uuid
+  /// Amount requested in paise. Must not exceed the eligible refundable amount.
+  amountPaise        Int
+  reason             String
+  status             RefundRequestStatus @default(PENDING)
+  decidedByUserId    String?             @db.Uuid
+  decidedAt          DateTime?
+  decisionNote       String?
+  processedAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  order       Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  requestedBy User  @relation("RefundRequests", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  decidedBy   User? @relation("RefundDecisions", fields: [decidedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([status, createdAt])
+  @@index([requestedByUserId, createdAt])
 }
