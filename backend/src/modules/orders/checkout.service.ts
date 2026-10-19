@@ -348,21 +348,23 @@ export async function checkout(db: Database, input: CheckoutInput) {
       // ── Wallet debit (one transaction per order) ──────────────────────────
       if (paymentMethod === 'WALLET') {
         const wallet = await ensureWallet(tx, userId);
+        // Snapshot balance before any debits so error details are accurate even when
+        // failure occurs on the 2nd+ outlet (earlier debits are still rolled back).
+        const preDebitBalance = wallet.balancePaise;
         const now = new Date();
         for (let i = 0; i < groups.length; i++) {
           const g = groups[i]!;
           const orderId = orderIds[i]!;
           const balanceAfter = await debitBalance(tx, wallet.id, g.totalPaise);
           if (balanceAfter === null) {
-            const current = await tx.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
             throw new AppError(
               409,
               'INSUFFICIENT_BALANCE',
               'Your wallet balance is too low for this order.',
               {
-                balancePaise: current.balancePaise,
+                balancePaise: preDebitBalance,
                 totalPaise: grandTotalPaise,
-                shortfallPaise: grandTotalPaise - current.balancePaise,
+                shortfallPaise: grandTotalPaise - preDebitBalance,
               },
             );
           }
