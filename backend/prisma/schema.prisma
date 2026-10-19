@@ -419,11 +419,11 @@ model MenuItem {
 
 // ─── Cart, orders, wallet and payments (Phase 5) ────────────────────────────
 
-/// One cart per user, holding items from at most one outlet.
+/// One cart per user, holding items from one or more outlets.
 model Cart {
   id           String   @id @default(uuid()) @db.Uuid
   userId       String   @unique @db.Uuid
-  /// The outlet the current items come from; null when the cart is empty.
+  /// The single outlet of all items; null when empty or when items span multiple outlets.
   outletId     String?  @db.Uuid
   /// Idempotency key of the last combo added in one go (Surprise Meal), so a repeated
   /// submission of the same combo is recognised and not added twice.
@@ -534,6 +534,8 @@ model Order {
   currency            String        @default("INR")
   /// Client-generated key; a repeated checkout with the same key returns the same order.
   idempotencyKey      String
+  /// Groups all orders from one multi-outlet checkout together. Equal to idempotencyKey for single-outlet.
+  batchKey            String?  @db.Text
   cancelReason        String?
   /// Bumped on every status/payment change, so clients can ignore stale updates.
   version             Int           @default(1)
@@ -565,6 +567,7 @@ model Order {
   @@index([outletId, status, placedAt])
   @@index([outletId, scheduledFor])
   @@index([userId, placedAt])
+  @@index([userId, batchKey])
 }
 
 /// A snapshot of what was bought. Never changes when the menu changes later.

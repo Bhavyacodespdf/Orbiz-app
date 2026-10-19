@@ -85,6 +85,7 @@ export const createItemBody = z
     /** PACKAGED or HANDMADE (no-show policy). Never inferred from the name. */
     fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable().optional(),
     sortOrder: sortOrder.optional(),
+    imageUrl: z.url().max(1000).nullable().optional(),
     calories: nutritionValue.nullable().optional(),
     protein: nutritionValue.nullable().optional(),
     carbohydrates: nutritionValue.nullable().optional(),
@@ -105,6 +106,7 @@ export const updateItemBody = z
     fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable(),
     isActive: z.boolean(),
     sortOrder,
+    imageUrl: z.url().max(1000).nullable(),
     calories: nutritionValue.nullable(),
     protein: nutritionValue.nullable(),
     carbohydrates: nutritionValue.nullable(),
@@ -122,6 +124,7 @@ export const createOutletBody = z
     description: z.string().trim().max(300).default(''),
     location: z.string().trim().max(120).default(''),
     status: outletStatusSchema.optional(),
+    imageUrl: z.url().max(1000).nullable().optional(),
   })
   .strict();
 
@@ -132,6 +135,7 @@ export const updateOutletBody = z
     location: z.string().trim().max(120),
     status: outletStatusSchema,
     isActive: z.boolean(),
+    imageUrl: z.url().max(1000).nullable(),
   })
   .partial()
   .strict();

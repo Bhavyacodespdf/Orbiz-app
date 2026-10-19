@@ -86,20 +86,21 @@ export function ordersRouter(
       }
       throw err;
     }
-    const { order, created } = result;
+    const { order, orders, created } = result;
     if (created) {
       deliverSoon(db, realtime);
-      await afterOrderChange(db, realtime, order.outlet.id);
-      await decideAutoAccept(db, realtime, order.id).catch(() => null);
-      // Sent only after the checkout transaction has committed.
-      realtime.orderCreated(order, userId);
-      realtime.stockChanged(
-        order.outlet.id,
-        order.items.map((i) => i.menuItemId),
-      );
+      for (const o of orders) {
+        await afterOrderChange(db, realtime, o.outlet.id);
+        await decideAutoAccept(db, realtime, o.id).catch(() => null);
+        realtime.orderCreated(o, userId);
+        realtime.stockChanged(
+          o.outlet.id,
+          o.items.map((i) => i.menuItemId),
+        );
+      }
       if (order.paymentMethod === 'WALLET') realtime.walletUpdated(userId, 'ORDER_DEBIT');
     }
-    res.status(created ? 201 : 200).json({ order });
+    res.status(created ? 201 : 200).json({ order, orders });
   });
 
   /** Order history: "active" (in progress) or "past" (finished), newest first. */

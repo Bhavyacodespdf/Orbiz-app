@@ -174,7 +174,7 @@ describe('photoUrl on reviews', () => {
       rating: 4,
       body: 'Good chai',
       photoUrl: 'not-a-url',
-    }).expect(422);
+    }).expect(400);
   });
 
   it('photoUrl returned in community feed', async () => {
