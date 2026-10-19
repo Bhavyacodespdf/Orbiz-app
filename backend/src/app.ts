@@ -66,6 +66,7 @@ import {
   staffRefundRouter,
 } from './modules/refunds/refund.routes.js';
 import { kitchenRouter, trackingRouter } from './modules/kitchen/kitchen.routes.js';
+import { uploadsRouter } from './modules/uploads/upload.routes.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { loadSession } from './middleware/auth.js';
 import { moneyActionLimiter } from './middleware/rate-limit.js';
@@ -190,6 +191,7 @@ export function createApp({
   api.use('/orders/:orderId/refund-request', orderRefundRouter(db));
   api.use('/admin/refund-requests', adminRefundRouter(db));
   api.use('/staff/outlets/:outletId/refund-requests', staffRefundRouter(db));
+  api.use('/uploads', uploadsRouter(config));
   // The payment simulator exists only when mock mode is on — never in production.
   if (rechargeProviderFor(config)?.name === 'MOCK') {
     api.use('/payments/mock', mockPaymentsRouter(db, config, realtime));

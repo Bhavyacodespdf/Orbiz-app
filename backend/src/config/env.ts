@@ -120,6 +120,12 @@ const envSchema = z
     WALLET_RECHARGE_MIN_PAISE: z.coerce.number().int().positive().default(9_900),
     WALLET_RECHARGE_MAX_PAISE: z.coerce.number().int().positive().default(200_000),
     WALLET_MAX_BALANCE_PAISE: z.coerce.number().int().positive().default(500_000),
+
+    // ─── Review photo uploads ─────────────────────────────────────────────────
+    /** Filesystem path where uploaded review photos are stored. */
+    UPLOAD_DIR: z.string().default('/tmp/orbiz-uploads'),
+    /** Maximum upload size in megabytes. */
+    UPLOAD_MAX_SIZE_MB: z.coerce.number().int().min(1).max(50).default(5),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production') {

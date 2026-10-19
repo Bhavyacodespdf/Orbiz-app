@@ -109,6 +109,7 @@ model User {
   foodReviews             FoodReview[]
   foodReviewsModerated    FoodReview[]                @relation("FoodReviewModeratedBy")
   foodReviewReports       FoodReviewReport[]
+  reviewLikes             ReviewLike[]
   savedMealCombos         SavedMealCombo[]
   reorderEvents           ReorderEvent[]
   pickupRedemptions       PickupCredential[]          @relation("PickupRedeemedBy")
@@ -216,6 +217,13 @@ enum Dietary {
   VEG
   NON_VEG
   EGG
+}
+
+/// Heat level of a dish, set by the manager.
+enum SpiceLevel {
+  MILD
+  MEDIUM
+  HOT
 }
 
 model Outlet {
@@ -354,6 +362,7 @@ model MenuItem {
   /// Integer paise (₹1 = 100). Database CHECK: > 0.
   pricePaise        Int
   dietary           Dietary?
+  spiceLevel        SpiceLevel?
   /// false = marked sold out by staff (a manual override that stays until staff restore it).
   /// Shown to students but cannot be ordered.
   isAvailable       Boolean          @default(true)
@@ -1799,6 +1808,8 @@ model FoodReview {
   rating           Int
   /// Optional. Database CHECK: at most 1000 characters.
   body             String?
+  /// Optional photo attached to the review. Stored as a relative filename served by the uploads endpoint.
+  photoUrl         String?
   taste            FeedbackLevel?
   portion          FeedbackLevel?
   freshness        FeedbackLevel?
@@ -1806,6 +1817,8 @@ model FoodReview {
   /// Set by the server from the eligibility check, never from the client.
   verifiedPurchase Boolean          @default(true)
   status           FoodReviewStatus @default(PUBLISHED)
+  /// Cached count of helpful likes. Incremented/decremented atomically via ReviewLike writes.
+  helpfulCount     Int              @default(0)
   moderatedById    String?          @db.Uuid
   moderatedAt      DateTime?
   moderationReason String?
@@ -1818,11 +1831,27 @@ model FoodReview {
   order       Order              @relation(fields: [orderId], references: [id], onDelete: Restrict)
   moderatedBy User?              @relation("FoodReviewModeratedBy", fields: [moderatedById], references: [id], onDelete: Restrict)
   reports     FoodReviewReport[]
+  likes       ReviewLike[]
 
   @@unique([userId, menuItemId])
   @@index([menuItemId, status, createdAt])
   @@index([outletId, status, createdAt])
   @@index([userId, updatedAt])
+  @@index([status, helpfulCount, createdAt])
+}
+
+/// A "helpful" vote from a student on a published review. One like per student per review.
+model ReviewLike {
+  id        String   @id @default(uuid()) @db.Uuid
+  reviewId  String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  review FoodReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
 }
 
 /// A student flagging a review for the outlet's manager. One report per student per review.

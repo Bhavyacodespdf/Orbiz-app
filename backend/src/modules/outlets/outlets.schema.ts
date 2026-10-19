@@ -6,6 +6,7 @@ const name = (max: number) => z.string().trim().min(1, 'Required').max(max);
 
 export const outletStatusSchema = z.enum(['OPEN', 'PAUSED', 'CLOSED']);
 export const dietarySchema = z.enum(['VEG', 'NON_VEG', 'EGG']);
+export const spiceLevelSchema = z.enum(['MILD', 'MEDIUM', 'HOT']);
 export const staffRoleSchema = z.enum(['MANAGER', 'POS']);
 
 /** ₹1 – ₹10,000, as integer paise. Floats are rejected rather than rounded. */
@@ -43,6 +44,7 @@ export const menuQuery = z.object({
   q: searchText,
   category: uuidParam.optional(),
   dietary: dietarySchema.optional(),
+  spiceLevel: spiceLevelSchema.optional(),
   sort: menuSort,
   /** Only dishes that can be ordered right now. */
   inStock: yes,
@@ -78,6 +80,7 @@ export const createItemBody = z
     description: z.string().trim().max(300).default(''),
     pricePaise: pricePaiseSchema,
     dietary: dietarySchema.nullable().optional(),
+    spiceLevel: spiceLevelSchema.nullable().optional(),
     isAvailable: z.boolean().optional(),
     /** PACKAGED or HANDMADE (no-show policy). Never inferred from the name. */
     fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable().optional(),
@@ -97,6 +100,7 @@ export const updateItemBody = z
     description: z.string().trim().max(300),
     pricePaise: pricePaiseSchema,
     dietary: dietarySchema.nullable(),
+    spiceLevel: spiceLevelSchema.nullable(),
     isAvailable: z.boolean(),
     fulfillmentType: z.enum(['PACKAGED', 'HANDMADE']).nullable(),
     isActive: z.boolean(),

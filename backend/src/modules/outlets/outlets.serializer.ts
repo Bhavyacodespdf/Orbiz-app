@@ -47,6 +47,7 @@ export function toMenuItem(item: MenuItem) {
     description: item.description,
     pricePaise: item.pricePaise,
     dietary: item.dietary,
+    spiceLevel: item.spiceLevel,
     /** Can be ordered right now: not marked sold out and, if counted, units left. */
     isAvailable: inStock(item),
     /** AVAILABLE, LOW_STOCK (still orderable) or SOLD_OUT. Quantities are never shown to students. */
